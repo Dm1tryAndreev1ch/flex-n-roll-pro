@@ -1,0 +1,41 @@
+version: "3.9"
+
+services:
+  analytics:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: flex-n-roll-analytics
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./models:/app/models       # сохранение ML-моделей
+      - ./logs:/app/logs           # лог-файлы
+      - ./.cache:/app/.cache       # файловый кэш
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - analytics-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: flex-n-roll-redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - analytics-net
+    volumes:
+      - redis-data:/data
+
+networks:
+  analytics-net:
+    driver: bridge
+
+volumes:
+  redis-data:

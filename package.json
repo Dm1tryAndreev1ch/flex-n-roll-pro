@@ -1,0 +1,18 @@
+{
+  "name": "flex-n-roll-pro",
+  "version": "1.0.0",
+  "description": "FLEX-N-ROLL PRO Monorepo",
+  "private": true,
+  "workspaces": [
+    "bot",
+    "webhook",
+    "calculator",
+    "commanalysis",
+    "marking"
+  ],
+  "scripts": {
+    "start": "npm run start --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present"
+  }
+}

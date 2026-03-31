@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    restart: always
+
+  bot:
+    build: ./bot
+    env_file: 
+      - ./bot/.env
+    restart: always
+    depends_on:
+      - webhook
+
+  webhook:
+    build: ./webhook
+    env_file: 
+      - ./webhook/.env
+    ports:
+      - "3000:3000"
+    restart: always
+    depends_on:
+      - redis
+
+  calculator:
+    build: ./calculator
+    ports:
+      - "8080:80"
+    restart: always
+
+  commanalysis:
+    build: ./commanalysis
+    env_file: 
+      - ./commanalysis/.env
+    ports:
+      - "3001:3000"
+    restart: always
+
+  marking:
+    build: ./marking
+    env_file: 
+      - ./marking/.env
+    ports:
+      - "3002:3000"
+    restart: always
+
+  analytics:
+    build: ./flex-n-roll-analytics
+    env_file: 
+      - ./flex-n-roll-analytics/.env
+    restart: always
+    depends_on:
+      - redis

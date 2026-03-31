@@ -1,0 +1,23 @@
+# Core
+python-dotenv==1.0.1
+requests==2.31.0
+urllib3==2.2.1
+
+# Data
+pandas==2.2.2
+numpy==1.26.4
+
+# ML
+scikit-learn==1.4.2
+joblib==1.4.2
+mlxtend==0.23.1        # association rules для cross-sell
+
+# Scheduler
+schedule==1.2.1
+
+# Cache (опционально)
+redis==5.0.4
+
+# Logging / utils
+colorlog==6.8.2
+tenacity==8.3.0        # retry decorator
