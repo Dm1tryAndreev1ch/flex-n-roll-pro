@@ -1,8 +1,8 @@
 // src/services/routing.js
 'use strict';
 
-const fs = require('fs');
-const path = require('path');
+const fs     = require('fs');
+const path   = require('path');
 const config = require('../../config/config');
 const logger = require('../utils/logger');
 
@@ -14,42 +14,53 @@ const ROUTE_MAP = {
   marking: 'marking',
 };
 
-// Defaults for unknown / unmapped routes
 const DEFAULT_POOL = 'sales';
 
-// ─── Round-robin counter store ────────────────────────────────────────────────
-// Uses Redis if available, otherwise a JSON file.
+// Counter file path (fallback when Redis is unavailable)
+const COUNTER_FILE = path.resolve('./data/routing_counters.json');
 
-let _redisClient = null;
+// ─── Round-robin counter store ────────────────────────────────────────────────
+// Uses Redis if available, otherwise a local JSON file.
+
+let _redisClient  = null;
+let _redisReady   = false;
 let _fileCounters = {};
 
 async function _initRedis() {
-  if (_redisClient) return _redisClient;
-  if (config.redis.useFile) return null;
+  if (_redisClient) return _redisReady ? _redisClient : null;
 
   try {
     const { createClient } = require('redis');
     const client = createClient({ url: config.redis.url });
-    client.on('error', (err) => logger.error('[routing] Redis error', { error: err.message }));
+
+    client.on('error', (err) => {
+      logger.error('[routing] Redis error', { error: err.message });
+      _redisReady = false;
+    });
+
+    client.on('ready', () => {
+      _redisReady = true;
+    });
+
     await client.connect();
     _redisClient = client;
+    _redisReady  = true;
     logger.info('[routing] Connected to Redis for round-robin counters');
     return client;
   } catch (err) {
-    logger.warn('[routing] Redis unavailable for routing counters; using file fallback', {
-      error: err.message,
-    });
+    logger.warn('[routing] Redis unavailable; using file fallback', { error: err.message });
     _redisClient = null;
+    _redisReady  = false;
     return null;
   }
 }
 
 function _loadFileCounters() {
   try {
-    const dir = path.dirname(config.redis.counterFile);
+    const dir = path.dirname(COUNTER_FILE);
     fs.mkdirSync(dir, { recursive: true });
-    if (fs.existsSync(config.redis.counterFile)) {
-      _fileCounters = JSON.parse(fs.readFileSync(config.redis.counterFile, 'utf8'));
+    if (fs.existsSync(COUNTER_FILE)) {
+      _fileCounters = JSON.parse(fs.readFileSync(COUNTER_FILE, 'utf8'));
     }
   } catch (err) {
     logger.warn('[routing] Could not load counter file', { error: err.message });
@@ -58,25 +69,25 @@ function _loadFileCounters() {
 
 function _saveFileCounters() {
   try {
-    const dir = path.dirname(config.redis.counterFile);
+    const dir = path.dirname(COUNTER_FILE);
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(config.redis.counterFile, JSON.stringify(_fileCounters, null, 2), 'utf8');
+    fs.writeFileSync(COUNTER_FILE, JSON.stringify(_fileCounters, null, 2), 'utf8');
   } catch (err) {
     logger.error('[routing] Could not save counter file', { error: err.message });
   }
 }
 
+// Load counters from file on startup
 _loadFileCounters();
 
 /**
  * Atomically increment a counter for a pool and return the new value.
- * Used to implement round-robin assignment.
  */
 async function _incrementCounter(pool) {
   const key = `fnr:routing:${pool}`;
 
   const redis = await _initRedis();
-  if (redis) {
+  if (redis && _redisReady) {
     try {
       return Number(await redis.incr(key));
     } catch (err) {
@@ -99,7 +110,7 @@ async function _incrementCounter(pool) {
  * @returns {Promise<number>} Bitrix24 user ID of the selected manager
  */
 async function getNextManager(pool) {
-  const normalised = (ROUTE_MAP[pool] || DEFAULT_POOL);
+  const normalised = ROUTE_MAP[pool] || DEFAULT_POOL;
   const managers   = config.managers[normalised];
 
   if (!managers || managers.length === 0) {
@@ -116,7 +127,7 @@ async function getNextManager(pool) {
   const manager = managers[index];
 
   logger.info('[routing] Assigned manager via round-robin', {
-    pool: normalised,
+    pool:      normalised,
     counter,
     index,
     managerId: manager,
@@ -126,7 +137,7 @@ async function getNextManager(pool) {
 }
 
 /**
- * Resolve the pool name from a GPT-4 classification result.
+ * Resolve the pool name from an AI classification result.
  *
  * @param {object} classification - Output of classifyMessage()
  * @returns {string} Pool name
@@ -170,18 +181,21 @@ function buildTaskTitle(classification, leadId) {
   };
 
   const productLabels = {
-    wide_format: 'Широкоформатная печать',
-    interior:    'Интерьерная печать',
-    souvenirs:   'Сувениры',
-    polygraphy:  'Полиграфия',
-    labeling:    'Маркировка',
-    express:     'Срочный заказ',
-    post_print:  'Постпечать',
-    unknown:     'Продукт не определён',
+    self_adhesive_paper: 'Самоклейка (бумага)',
+    self_adhesive_pe:    'Самоклейка (PE)',
+    self_adhesive_pet:   'Самоклейка (PET)',
+    self_adhesive_bopp:  'Самоклейка (BOPP)',
+    self_adhesive_pp:    'Самоклейка (PP)',
+    sleeve:              'Sleeve-этикетка',
+    ar_label:            'AR Live Label',
+    thermochrome:        'Термохром',
+    linerless:           'Linerless',
+    datamatrix:          'DataMatrix / ЧЗ',
+    unknown:             'Продукт не определён',
   };
 
-  const intentLabel   = intentLabels[classification.intent]      || classification.intent;
-  const productLabel  = productLabels[classification.product_type] || classification.product_type;
+  const intentLabel   = intentLabels[classification.intent]        || classification.intent;
+  const productLabel  = productLabels[classification.product_type]  || classification.product_type;
   const priorityLabel = classification.priority === 1 ? ' [HOT]' : '';
 
   return `[Лид #${leadId}]${priorityLabel} ${intentLabel} — ${productLabel}`;
@@ -211,10 +225,8 @@ function buildTaskDescription(classification, leadId) {
   if (d.material)      lines.push(`Материал: ${d.material}`);
   if (d.deadline)      lines.push(`Срок клиента: ${d.deadline}`);
   if (d.budget)        lines.push(`Бюджет: ${d.budget} руб.`);
-  if (d.has_files && d.file_names.length) {
-    lines.push(`Файлы: ${d.file_names.join(', ')}`);
-  }
-  if (d.notes) lines.push(`Примечания: ${d.notes}`);
+  if (d.has_files)     lines.push('Есть прикреплённые файлы');
+  if (d.notes)         lines.push(`Примечания: ${d.notes}`);
 
   return lines.join('\n');
 }

@@ -3,7 +3,7 @@
 
 const { createLogger, format, transports } = require('winston');
 const path = require('path');
-const fs = require('fs');
+const fs   = require('fs');
 const config = require('../../config/config');
 
 // Ensure log directory exists
@@ -17,9 +17,9 @@ const devFormat = combine(
   timestamp({ format: 'YYYY-MM-DD HH:mm:ss.SSS' }),
   errors({ stack: true }),
   splat(),
-  printf(({ level, message, timestamp, stack, ...meta }) => {
+  printf(({ level, message, timestamp: ts, stack, ...meta }) => {
     const metaStr = Object.keys(meta).length ? `\n${JSON.stringify(meta, null, 2)}` : '';
-    return `[${timestamp}] ${level}: ${stack || message}${metaStr}`;
+    return `[${ts}] ${level}: ${stack || message}${metaStr}`;
   })
 );
 
@@ -38,17 +38,17 @@ const logger = createLogger({
     // Combined log (all levels)
     new transports.File({
       filename: path.join(config.logging.dir, 'combined.log'),
-      format: prodFormat,
-      maxsize: 20 * 1024 * 1024,   // 20 MB
+      format:   prodFormat,
+      maxsize:  20 * 1024 * 1024,   // 20 MB
       maxFiles: 14,
       tailable: true,
     }),
     // Error-only log
     new transports.File({
       filename: path.join(config.logging.dir, 'error.log'),
-      level: 'error',
-      format: prodFormat,
-      maxsize: 10 * 1024 * 1024,
+      level:    'error',
+      format:   prodFormat,
+      maxsize:  10 * 1024 * 1024,
       maxFiles: 30,
       tailable: true,
     }),
@@ -61,17 +61,11 @@ const logger = createLogger({
   ],
 });
 
-// Add console transport based on environment
+// Console transport based on environment
 if (config.server.isProduction) {
   logger.add(new transports.Console({ format: prodFormat }));
 } else {
   logger.add(new transports.Console({ format: devFormat }));
 }
-
-/**
- * Create a child logger scoped to a specific module / request.
- * @param {object} meta - Additional default metadata for all log entries.
- */
-logger.child = (meta) => logger.child(meta);
 
 module.exports = logger;

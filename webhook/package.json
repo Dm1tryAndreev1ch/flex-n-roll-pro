@@ -1,7 +1,7 @@
 {
   "name": "flex-n-roll-webhook",
-  "version": "1.0.0",
-  "description": "Bitrix24 → OpenAI GPT-4 webhook handler for FLEX-N-ROLL PRO typography",
+  "version": "2.0.0",
+  "description": "Bitrix24 → LM Studio AI webhook handler for FLEX-N-ROLL PRO label typography",
   "main": "src/server.js",
   "engines": {
     "node": ">=20.0.0"

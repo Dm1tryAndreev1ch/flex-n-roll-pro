@@ -1,9 +1,9 @@
 // src/services/bitrix.js
 'use strict';
 
-const axios = require('axios');
-const fs = require('fs');
-const path = require('path');
+const axios  = require('axios');
+const fs     = require('fs');
+const path   = require('path');
 const config = require('../../config/config');
 const logger = require('../utils/logger');
 const { withRetry, isTransientError } = require('../utils/retry');
@@ -39,7 +39,7 @@ function saveTokensToFile() {
   }
 }
 
-// Attempt to bootstrap tokens from file on module load
+// Bootstrap tokens from file on module load
 loadTokensFromFile();
 
 // ─── OAuth helpers ────────────────────────────────────────────────────────────
@@ -59,7 +59,7 @@ function getAuthUrl() {
 
 /**
  * Exchange an authorisation code for access + refresh tokens.
- * Call this once from your /oauth/callback route.
+ * Call from /oauth/callback route.
  */
 async function exchangeCode(code) {
   const url = `https://${config.bitrix.portalDomain}/oauth/token/`;
@@ -106,11 +106,9 @@ async function refreshAccessToken() {
 
 // ─── REST API client ──────────────────────────────────────────────────────────
 
-const baseURL = (domain) => `https://${domain}/rest/`;
-
 /**
  * Call a Bitrix24 REST API method.
- * Automatically refreshes the access token on 401 and retries once.
+ * Automatically refreshes the access token on 401 / expired_token and retries.
  *
  * @param {string} method - e.g. 'crm.lead.update'
  * @param {object} params - Method parameters
@@ -120,7 +118,7 @@ async function callBitrix(method, params = {}) {
   return withRetry(
     async (attempt) => {
       try {
-        const url = `${baseURL(config.bitrix.portalDomain)}${method}`;
+        const url  = `https://${config.bitrix.portalDomain}/rest/${method}`;
         const body = { ...params, auth: _tokens.accessToken };
 
         logger.debug(`[bitrix] Calling ${method}`, { attempt });
@@ -138,11 +136,10 @@ async function callBitrix(method, params = {}) {
 
         return response.data.result;
       } catch (err) {
-        // If Bitrix24 returns EXPIRED_TOKEN, refresh and retry
+        // If token expired, refresh and retry
         if (err.bitrixError === 'expired_token' || (err.response && err.response.status === 401)) {
           logger.warn('[bitrix] Token expired, refreshing…');
           await refreshAccessToken();
-          // Re-throw to trigger retry
           const retryErr = new Error('Token refreshed, retrying');
           retryErr.code = 'TOKEN_REFRESHED';
           throw retryErr;
@@ -163,27 +160,13 @@ async function callBitrix(method, params = {}) {
 // ─── CRM operations ───────────────────────────────────────────────────────────
 
 /**
- * Update a lead's fields in Bitrix24.
- *
- * @param {number|string} leadId
- * @param {object} fields - Key/value map of CRM fields to update
- */
-async function updateLead(leadId, fields) {
-  logger.info('[bitrix] Updating lead', { leadId, fields: Object.keys(fields) });
-  return callBitrix('crm.lead.update', {
-    id:     leadId,
-    fields,
-  });
-}
-
-/**
  * Create a task in Bitrix24.
  *
- * @param {object} taskData
- * @param {string}        taskData.title
- * @param {string}        taskData.description
+ * @param {object}       taskData
+ * @param {string}       taskData.title
+ * @param {string}       taskData.description
  * @param {number|string} taskData.responsibleId - Assignee user ID
- * @param {Date}          taskData.deadline
+ * @param {Date}         taskData.deadline
  * @param {number|string} [taskData.leadId]      - Related CRM lead ID
  */
 async function createTask({ title, description, responsibleId, deadline, leadId }) {
@@ -194,10 +177,9 @@ async function createTask({ title, description, responsibleId, deadline, leadId 
     DESCRIPTION:    description,
     RESPONSIBLE_ID: responsibleId,
     DEADLINE:       formatBitrixDate(deadline),
-    PRIORITY:       '1', // High priority
+    PRIORITY:       '1',
   };
 
-  // Attach to lead via UF field if provided
   if (leadId) {
     fields['UF_CRM_TASK'] = [`L_${leadId}`];
   }
@@ -206,13 +188,24 @@ async function createTask({ title, description, responsibleId, deadline, leadId 
 }
 
 /**
- * Send a message in Bitrix24 Open Lines (IM).
+ * Update a deal's fields in Bitrix24.
+ *
+ * @param {number|string} dealId
+ * @param {object} fields - Key/value map of CRM fields to update
+ */
+async function updateDeal(dealId, fields) {
+  logger.info('[bitrix] Updating deal', { dealId, fields: Object.keys(fields) });
+  return callBitrix('crm.deal.update', { id: dealId, fields });
+}
+
+/**
+ * Send a message via Bitrix24 Open Lines (IM).
  *
  * @param {string|number} dialogId - Dialog/chat ID from the webhook event
  * @param {string}        text     - Message text
  */
-async function sendImMessage(dialogId, text) {
-  logger.info('[bitrix] Sending IM message', { dialogId });
+async function sendMessage(dialogId, text) {
+  logger.info('[bitrix] Sending message', { dialogId });
   return callBitrix('im.message.add', {
     DIALOG_ID: dialogId,
     MESSAGE:   text,
@@ -225,6 +218,25 @@ async function sendImMessage(dialogId, text) {
  */
 async function getLead(leadId) {
   return callBitrix('crm.lead.get', { id: leadId });
+}
+
+/**
+ * Retrieve a contact by ID.
+ * @param {number|string} contactId
+ */
+async function getContact(contactId) {
+  return callBitrix('crm.contact.get', { id: contactId });
+}
+
+/**
+ * Update a lead's fields in Bitrix24.
+ *
+ * @param {number|string} leadId
+ * @param {object} fields
+ */
+async function updateLead(leadId, fields) {
+  logger.info('[bitrix] Updating lead', { leadId, fields: Object.keys(fields) });
+  return callBitrix('crm.lead.update', { id: leadId, fields });
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -254,10 +266,12 @@ module.exports = {
   exchangeCode,
   refreshAccessToken,
   callBitrix,
-  updateLead,
   createTask,
-  sendImMessage,
+  updateDeal,
+  sendMessage,
   getLead,
+  getContact,
+  updateLead,
   calculateDeadline,
   formatBitrixDate,
 };

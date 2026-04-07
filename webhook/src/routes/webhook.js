@@ -2,14 +2,14 @@
 'use strict';
 
 const express = require('express');
-const router = express.Router();
+const router  = express.Router();
 
 const logger = require('../utils/logger');
 const { classifyMessage } = require('../services/lmstudio');
 const {
   updateLead,
   createTask,
-  sendImMessage,
+  sendMessage,
   calculateDeadline,
 } = require('../services/bitrix');
 const {
@@ -30,11 +30,13 @@ router.post('/', async (req, res) => {
   // Respond immediately to prevent Bitrix24 timeout (max ~5 s)
   res.status(200).json({ ok: true });
 
-  const body = req.body || {};
+  const body  = req.body || {};
   const event = body.event || body.EVENT;
 
   if (!event) {
-    logger.warn('[webhook] Received request with no event field', { body });
+    logger.warn('[webhook] Received request with no event field', {
+      keys: Object.keys(body),
+    });
     return;
   }
 
@@ -68,7 +70,6 @@ router.post('/', async (req, res) => {
  * Handle onCrmLeadAdd — a new lead was created in Bitrix24 CRM.
  */
 async function handleCrmLeadAdd(body) {
-  // Bitrix24 wraps event data under data[FIELDS] or data[LEAD]
   const data   = body.data || body.DATA || {};
   const fields = data.FIELDS || data.fields || data;
   const leadId = fields.ID || fields.id;
@@ -80,7 +81,7 @@ async function handleCrmLeadAdd(body) {
 
   logger.info('[webhook:crmLeadAdd] Processing new lead', { leadId });
 
-  // Extract contact / message data from the lead fields
+  // Extract message from lead fields
   const message = [
     fields.COMMENTS,
     fields.TITLE,
@@ -98,32 +99,36 @@ async function handleCrmLeadAdd(body) {
     contactPhone,
     contactEmail,
     fileNames: [],
-    dialogId: null,
+    dialogId:  null,
   });
 }
 
 /**
- * Handle onImConnectorMessageAdd — a new message arrived via Open Lines / connector.
+ * Handle onImConnectorMessageAdd — a new message arrived via Open Lines.
  */
 async function handleImMessageAdd(body) {
-  const data    = body.data || body.DATA || {};
-  const message = data.MESSAGE || data.message || data.CONTENT || '';
-  const leadId  = data.CRM_ENTITY_ID || data.crm_entity_id || null;
+  const data     = body.data || body.DATA || {};
+  const message  = data.MESSAGE || data.message || data.CONTENT || '';
+  const leadId   = data.CRM_ENTITY_ID || data.crm_entity_id || null;
   const dialogId = data.DIALOG_ID || data.dialog_id || null;
 
-  // Extract attachments
+  // Extract attached files
   const files    = data.FILES || data.files || data.ATTACHMENTS || [];
   const fileNames = Array.isArray(files)
     ? files.map((f) => f.NAME || f.name || String(f)).filter(Boolean)
     : [];
 
-  // Contact data (from connector user)
+  // Contact data from connector user
   const connectorUser = data.USER || data.user || {};
   const contactName   = connectorUser.NAME  || connectorUser.name  || null;
   const contactPhone  = connectorUser.PHONE || connectorUser.phone || null;
   const contactEmail  = connectorUser.EMAIL || connectorUser.email || null;
 
-  logger.info('[webhook:imMessage] Processing IM message', { leadId, dialogId, fileCount: fileNames.length });
+  logger.info('[webhook:imMessage] Processing IM message', {
+    leadId,
+    dialogId,
+    fileCount: fileNames.length,
+  });
 
   if (!message) {
     logger.warn('[webhook:imMessage] Empty message body, skipping');
@@ -155,7 +160,7 @@ async function processLeadClassification({
   fileNames,
   dialogId,
 }) {
-  // Step 1: Classify with GPT-4
+  // Step 1: AI classification
   let classification;
   try {
     classification = await classifyMessage({
@@ -166,11 +171,11 @@ async function processLeadClassification({
       fileNames,
     });
   } catch (err) {
-    logger.error('[pipeline] GPT-4 classification failed', { leadId, error: err.message });
-    // Still send a generic auto-reply if we have a dialog
+    logger.error('[pipeline] AI classification failed', { leadId, error: err.message });
+    // Send generic auto-reply if we have a dialog
     if (dialogId) {
       await safeCall(() =>
-        sendImMessage(dialogId, 'Ваше сообщение получено. Менеджер свяжется с вами в ближайшее время.')
+        sendMessage(dialogId, 'Ваше сообщение получено. Менеджер свяжется с вами в ближайшее время.')
       );
     }
     return;
@@ -178,9 +183,11 @@ async function processLeadClassification({
 
   const { intent, product_type, urgency, route_to, priority, auto_reply, extracted_data } = classification;
 
-  logger.info('[pipeline] Classification result', { leadId, intent, product_type, priority, route_to });
+  logger.info('[pipeline] Classification result', {
+    leadId, intent, product_type, priority, route_to, urgency,
+  });
 
-  // Step 2: Resolve pool & select manager
+  // Step 2: Resolve pool & select manager (round-robin)
   const pool      = resolvePool(classification);
   const managerId = await getNextManager(pool);
 
@@ -195,10 +202,10 @@ async function processLeadClassification({
     );
   }
 
-  // Step 4: Create SLA task
+  // Step 4: Create SLA-based task
   if (leadId) {
-    const deadline = calculateDeadline(priority);
-    const taskTitle = buildTaskTitle(classification, leadId);
+    const deadline        = calculateDeadline(priority);
+    const taskTitle       = buildTaskTitle(classification, leadId);
     const taskDescription = buildTaskDescription(classification, leadId);
 
     await safeCall(
@@ -213,10 +220,10 @@ async function processLeadClassification({
     );
   }
 
-  // Step 5: Send auto-reply
+  // Step 5: Send auto-reply to client
   if (dialogId && auto_reply) {
     await safeCall(
-      () => sendImMessage(dialogId, auto_reply),
+      () => sendMessage(dialogId, auto_reply),
       '[pipeline] Failed to send auto-reply'
     );
   }
@@ -227,33 +234,26 @@ async function processLeadClassification({
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
- * Map GPT-4 classification to Bitrix24 CRM field names.
- * Adjust field names to match your Bitrix24 configuration / custom fields.
+ * Map AI classification to Bitrix24 CRM field names.
+ * Adjust UF_ field names to match your Bitrix24 configuration.
  */
 function buildCrmFields(classification, managerId) {
   const { intent, product_type, urgency, priority, extracted_data: d } = classification;
 
   const fields = {
-    // Standard Bitrix24 CRM fields
-    ASSIGNED_BY_ID: managerId,
-
-    // Custom fields (UF_) — adjust names to your Bitrix24 installation
+    ASSIGNED_BY_ID:        managerId,
     UF_CRM_REQUEST_TYPE:   intent,
     UF_CRM_PRODUCT_TYPE:   product_type,
     UF_CRM_URGENCY:        urgency,
     UF_CRM_AI_PRIORITY:    String(priority),
-
-    // Source comment
-    COMMENTS: `[AI] Классифицировано: ${intent} / ${product_type} / P${priority}`,
+    COMMENTS:              `[AI] Классифицировано: ${intent} / ${product_type} / P${priority}`,
   };
 
-  // Populate contact fields if extracted
   if (d.contact_name)  fields.NAME  = d.contact_name;
   if (d.contact_phone) fields.PHONE = [{ VALUE: d.contact_phone, VALUE_TYPE: 'WORK' }];
   if (d.contact_email) fields.EMAIL = [{ VALUE: d.contact_email, VALUE_TYPE: 'WORK' }];
   if (d.company)       fields.COMPANY_TITLE = d.company;
 
-  // Optionally set budget
   if (d.budget) {
     fields.OPPORTUNITY = d.budget;
     fields.CURRENCY_ID = 'RUB';
@@ -264,7 +264,7 @@ function buildCrmFields(classification, managerId) {
 
 /**
  * Execute an async call, logging errors without propagating.
- * Used to ensure one failed step doesn't abort the entire pipeline.
+ * Ensures one failed step doesn't abort the entire pipeline.
  */
 async function safeCall(fn, label = '[pipeline:safeCall]') {
   try {

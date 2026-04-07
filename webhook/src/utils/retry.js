@@ -5,7 +5,7 @@ const logger = require('./logger');
 const config = require('../../config/config');
 
 /**
- * Exponential backoff with jitter.
+ * Exponential backoff with full jitter.
  *
  * @param {number} attempt  - Current attempt index (0-based).
  * @param {number} baseMs   - Base delay in milliseconds.
@@ -13,7 +13,6 @@ const config = require('../../config/config');
  * @returns {number} Delay in milliseconds.
  */
 function calcDelay(attempt, baseMs, maxMs) {
-  // Full jitter strategy: delay = random(0, min(cap, base * 2^attempt))
   const exponential = Math.min(maxMs, baseMs * Math.pow(2, attempt));
   return Math.floor(Math.random() * exponential);
 }
@@ -32,11 +31,11 @@ function sleep(ms) {
  *
  * @param {Function} fn           - Async function to execute; receives the attempt number (1-based).
  * @param {object}   [opts]       - Override options.
- * @param {number}   [opts.maxAttempts]  - Max total attempts.
- * @param {number}   [opts.baseDelayMs] - Base backoff delay.
- * @param {number}   [opts.maxDelayMs]  - Max backoff delay.
- * @param {Function} [opts.shouldRetry] - Predicate(error) → bool; return false to abort early.
- * @param {string}   [opts.label]       - Label for log messages.
+ * @param {number}   [opts.maxAttempts]  - Max total attempts (default from config: 3).
+ * @param {number}   [opts.baseDelayMs]  - Base backoff delay.
+ * @param {number}   [opts.maxDelayMs]   - Max backoff delay.
+ * @param {Function} [opts.shouldRetry]  - Predicate(error) → bool; return false to abort early.
+ * @param {string}   [opts.label]        - Label for log messages.
  * @returns {Promise<*>} Resolved value of fn.
  * @throws {Error} Last error after all retries exhausted.
  */
@@ -59,13 +58,13 @@ async function withRetry(fn, opts = {}) {
     } catch (err) {
       lastError = err;
 
-      const isRetryable = shouldRetry(err);
+      const isRetryable  = shouldRetry(err);
       const isLastAttempt = attempt === maxAttempts;
 
       if (!isRetryable || isLastAttempt) {
         logger.error(`[retry] ${label} failed permanently after ${attempt} attempt(s)`, {
-          error: err.message,
-          stack: err.stack,
+          error:     err.message,
+          stack:     err.stack,
           retryable: isRetryable,
         });
         throw err;
@@ -73,7 +72,7 @@ async function withRetry(fn, opts = {}) {
 
       const delayMs = calcDelay(attempt - 1, baseDelayMs, maxDelayMs);
       logger.warn(`[retry] ${label} failed on attempt ${attempt}/${maxAttempts}. Retrying in ${delayMs}ms`, {
-        error: err.message,
+        error:   err.message,
         attempt,
         delayMs,
       });
@@ -87,7 +86,7 @@ async function withRetry(fn, opts = {}) {
 
 /**
  * Predicate: retry on network / 5xx errors, not on 4xx client errors.
- * Works with axios errors and standard fetch-style errors.
+ * Works with axios errors and OpenAI SDK errors.
  */
 function isTransientError(err) {
   if (err.code && ['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'ENOTFOUND', 'EPIPE'].includes(err.code)) {

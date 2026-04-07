@@ -1,0 +1,28 @@
+{
+  "name": "fnr-status-bot",
+  "version": "1.0.0",
+  "description": "Telegram-бот для проверки статуса заказов типографии FLEX-N-ROLL PRO",
+  "main": "src/bot.js",
+  "scripts": {
+    "start": "node src/bot.js",
+    "dev": "node --watch src/bot.js"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "keywords": [
+    "telegram",
+    "bot",
+    "bitrix24",
+    "crm",
+    "order-status"
+  ],
+  "author": "FLEX-N-ROLL PRO",
+  "license": "ISC",
+  "dependencies": {
+    "telegraf": "^4.16.3",
+    "axios": "^1.7.9",
+    "dotenv": "^16.4.7",
+    "winston": "^3.17.0"
+  }
+}
