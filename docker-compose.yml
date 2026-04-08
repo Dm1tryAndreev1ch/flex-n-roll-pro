@@ -9,8 +9,8 @@
 #   docker compose logs -f
 #   docker compose down
 #
-# Environment: each service reads from its own .env file.
-# Create .env files by copying each service's .env.example.
+# Environment: all services read from a single root .env file.
+# Create .env by copying .env.example in the repository root.
 #
 # No host port mappings — all services communicate over the fnr-net
 # bridge network using container names and internal ports.
@@ -53,7 +53,7 @@ services:
     expose:
       - "3000"
     env_file:
-      - ./webhook/.env
+      - .env
     environment:
       NODE_ENV: production
       REDIS_URL: redis://redis:6379
@@ -103,7 +103,7 @@ services:
     expose:
       - "3001"
     env_file:
-      - ./calculator/.env
+      - .env
     environment:
       NODE_ENV: production
       PORT: 3001
@@ -124,7 +124,7 @@ services:
     expose:
       - "3000"
     env_file:
-      - ./commanalysis/.env
+      - .env
     environment:
       NODE_ENV: production
       TMP_DIR: /tmp/commanalysis
@@ -151,7 +151,7 @@ services:
     container_name: fnr-status-bot
     restart: unless-stopped
     env_file:
-      - ./fnr-status-bot/.env
+      - .env
     depends_on:
       webhook:
         condition: service_healthy
@@ -172,7 +172,7 @@ services:
     expose:
       - "3000"
     env_file:
-      - ./marking/.env
+      - .env
     environment:
       NODE_ENV: production
       DATA_DIR: /app/data

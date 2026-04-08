@@ -6,7 +6,7 @@ const config = {
   },
 
   bitrix24: {
-    webhookUrl: process.env.BITRIX24_WEBHOOK_URL,
+    webhookUrl: process.env.BITRIX_WEBHOOK_URL,
     timeout: 10000, // таймаут запроса 10 секунд
   },
 
@@ -27,7 +27,7 @@ if (!config.bot.token) {
 }
 
 if (!config.bitrix24.webhookUrl) {
-  console.error('❌ BITRIX24_WEBHOOK_URL не задан в .env');
+  console.error('❌ BITRIX_WEBHOOK_URL не задан в .env');
   process.exit(1);
 }
 

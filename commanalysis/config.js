@@ -5,7 +5,7 @@ const path = require('path');
 const fs   = require('fs');
 
 // ── Валидация обязательных переменных ──────────────────────────────────────
-const REQUIRED = ['OPENAI_API_KEY', 'BITRIX24_WEBHOOK_URL'];
+const REQUIRED = ['COMMANALYSIS_OPENAI_API_KEY', 'BITRIX_WEBHOOK_URL'];
 const missing  = REQUIRED.filter(k => !process.env[k]);
 if (missing.length) {
   throw new Error(`[config] Отсутствуют переменные окружения: ${missing.join(', ')}`);
@@ -22,15 +22,15 @@ if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR, { recursive: true });
 module.exports = {
   // ── OpenAI ────────────────────────────────────────────────────────────────
   openai: {
-    apiKey:       process.env.OPENAI_API_KEY,
+    apiKey:       process.env.COMMANALYSIS_OPENAI_API_KEY,
     gptModel:     process.env.GPT_MODEL     || 'gpt-4o',
     whisperModel: process.env.WHISPER_MODEL || 'whisper-1',
   },
 
   // ── Битрикс24 ─────────────────────────────────────────────────────────────
   bitrix: {
-    webhookUrl: process.env.BITRIX24_WEBHOOK_URL.replace(/\/$/, ''),
-    portal:     process.env.BITRIX24_PORTAL || '',
+    webhookUrl: process.env.BITRIX_WEBHOOK_URL.replace(/\/$/, ''),
+    portal:     process.env.BITRIX_PORTAL_DOMAIN || '',
   },
 
   // ── Сервер ────────────────────────────────────────────────────────────────

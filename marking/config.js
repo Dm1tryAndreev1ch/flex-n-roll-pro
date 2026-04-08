@@ -42,7 +42,7 @@ const config = {
 
   bitrix: {
     webhookUrl: process.env.BITRIX_WEBHOOK_URL,
-    portalUrl: process.env.BITRIX_PORTAL_URL || '',
+    portalDomain: process.env.BITRIX_PORTAL_DOMAIN || '',
     stages: {
       production: process.env.BITRIX_STAGE_PRODUCTION || 'C3:NEW',
       shipment: process.env.BITRIX_STAGE_SHIPMENT || 'C3:WON',

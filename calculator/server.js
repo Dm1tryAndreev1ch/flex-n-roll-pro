@@ -24,8 +24,8 @@ app.use(cors({
 
 // ─── Конфигурация Битрикс24 ──────────────────────────────────────────────────
 // Задайте в .env:
-//   BITRIX24_WEBHOOK_URL=https://your-portal.bitrix24.ru/rest/1/token/
-const BITRIX24_WEBHOOK_URL = process.env.BITRIX24_WEBHOOK_URL;
+//   BITRIX_WEBHOOK_URL=https://your-portal.bitrix24.ru/rest/1/token/
+const BITRIX_WEBHOOK_URL = process.env.BITRIX_WEBHOOK_URL;
 const BITRIX24_DOMAIN = process.env.BITRIX24_DOMAIN;
 const BITRIX24_ACCESS_TOKEN = process.env.BITRIX24_ACCESS_TOKEN;
 
@@ -37,13 +37,13 @@ async function callBitrix24(method, params) {
   let url;
   let requestParams = { ...params };
 
-  if (BITRIX24_WEBHOOK_URL) {
-    url = `${BITRIX24_WEBHOOK_URL.replace(/\/$/, '')}/${method}`;
+  if (BITRIX_WEBHOOK_URL) {
+    url = `${BITRIX_WEBHOOK_URL.replace(/\/$/, '')}/${method}`;
   } else if (BITRIX24_DOMAIN && BITRIX24_ACCESS_TOKEN) {
     url = `https://${BITRIX24_DOMAIN}/rest/${method}`;
     requestParams.auth = BITRIX24_ACCESS_TOKEN;
   } else {
-    throw new Error('Б24 не настроен: задайте BITRIX24_WEBHOOK_URL в .env');
+    throw new Error('Б24 не настроен: задайте BITRIX_WEBHOOK_URL в .env');
   }
 
   const response = await axios.post(url, requestParams, {
@@ -162,7 +162,7 @@ app.get('/api/health', (_req, res) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
-    bitrix24: BITRIX24_WEBHOOK_URL ? 'webhook configured'
+    bitrix24: BITRIX_WEBHOOK_URL ? 'webhook configured'
       : BITRIX24_DOMAIN ? 'oauth configured'
       : 'NOT CONFIGURED',
   });
@@ -172,8 +172,8 @@ app.get('/api/health', (_req, res) => {
 app.listen(PORT, () => {
   console.log(`\n🚀 flex-n-roll Б24 прокси-сервер запущен на порту ${PORT}`);
   console.log(`   Health check: http://localhost:${PORT}/api/health`);
-  if (!BITRIX24_WEBHOOK_URL && !(BITRIX24_DOMAIN && BITRIX24_ACCESS_TOKEN)) {
-    console.warn('\n⚠️  ВНИМАНИЕ: Задайте BITRIX24_WEBHOOK_URL в .env\n');
+  if (!BITRIX_WEBHOOK_URL && !(BITRIX24_DOMAIN && BITRIX24_ACCESS_TOKEN)) {
+    console.warn('\n⚠️  ВНИМАНИЕ: Задайте BITRIX_WEBHOOK_URL в .env\n');
   }
 });
 
