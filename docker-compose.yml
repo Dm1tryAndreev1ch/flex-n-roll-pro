@@ -1,8 +1,8 @@
 # =============================================================================
 # FLEX-N-ROLL PRO — Unified Docker Compose
 # =============================================================================
-# Covers all services: webhook, calculator, commanalysis, commanalysis-scheduler,
-# fnr-status-bot, marking, fnr-analytics, and Redis.
+# Covers all services EXCEPT calculator (see docker-compose.calculator.yml):
+# webhook, commanalysis, commanalysis-scheduler, fnr-status-bot, marking, fnr-analytics, Redis.
 #
 # Usage:
 #   docker compose up --build -d
@@ -72,43 +72,8 @@ services:
     networks:
       - fnr-net
 
-  # ---------------------------------------------------------------------------
-  # Calculator — label pricing calculator (React SPA + Express API)
-  # Frontend served by nginx on port 80 (reachable as http://fnr-calculator within fnr-net)
-  # Note: Docker build produces the static frontend only (nginx).
-  #       For full functionality, run the calculator-api service below.
-  # ---------------------------------------------------------------------------
-  calculator:
-    build:
-      context: ./calculator
-      dockerfile: Dockerfile
-    container_name: fnr-calculator
-    restart: unless-stopped
-    expose:
-      - "80"
-    networks:
-      - fnr-net
-
-  # ---------------------------------------------------------------------------
-  # Calculator API — Express backend for the calculator
-  # Provides /api endpoints for Bitrix24 integration
-  # Internal port: 3001 (reachable as http://fnr-calculator-api:3001 within fnr-net)
-  # ---------------------------------------------------------------------------
-  calculator-api:
-    build:
-      context: ./calculator
-      dockerfile: Dockerfile.api
-    container_name: fnr-calculator-api
-    restart: unless-stopped
-    expose:
-      - "3001"
-    env_file:
-      - .env
-    environment:
-      NODE_ENV: production
-      PORT: 3001
-    networks:
-      - fnr-net
+  # Calculator is in docker-compose.calculator.yml — run separately:
+  #   docker compose -f docker-compose.calculator.yml up --build -d
 
   # ---------------------------------------------------------------------------
   # CommAnalysis — AI analysis of sales communications

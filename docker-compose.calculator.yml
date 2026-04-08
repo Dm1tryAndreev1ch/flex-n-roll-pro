@@ -1,0 +1,54 @@
+# =============================================================================
+# FLEX-N-ROLL PRO — Calculator (отдельный compose)
+# =============================================================================
+# Поднимает только calculator (фронтенд) и calculator-api (бэкенд).
+# Подключается к основной сети fnr-net (основной compose должен быть запущен).
+#
+# Запуск:
+#   docker compose -f docker-compose.calculator.yml up --build -d
+#
+# Остановка:
+#   docker compose -f docker-compose.calculator.yml down
+# =============================================================================
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Calculator — label pricing calculator (React SPA, nginx)
+  # proxy_pass /api → fnr-calculator-api:3001
+  # Internal: http://fnr-calculator:80
+  # ---------------------------------------------------------------------------
+  calculator:
+    build:
+      context: ./calculator
+      dockerfile: Dockerfile
+    container_name: fnr-calculator
+    restart: unless-stopped
+    expose:
+      - "80"
+    networks:
+      - fnr-net
+
+  # ---------------------------------------------------------------------------
+  # Calculator API — Express backend, Bitrix24 integration
+  # Internal: http://fnr-calculator-api:3001
+  # ---------------------------------------------------------------------------
+  calculator-api:
+    build:
+      context: ./calculator
+      dockerfile: Dockerfile.api
+    container_name: fnr-calculator-api
+    restart: unless-stopped
+    expose:
+      - "3001"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+    networks:
+      - fnr-net
+
+networks:
+  fnr-net:
+    external: true   # подключаемся к сети созданной основным compose
