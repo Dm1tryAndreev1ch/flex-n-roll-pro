@@ -169,12 +169,28 @@ app.get('/api/health', (_req, res) => {
 });
 
 // ─── Запуск ──────────────────────────────────────────────────────────────────
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`\n🚀 flex-n-roll Б24 прокси-сервер запущен на порту ${PORT}`);
   console.log(`   Health check: http://localhost:${PORT}/api/health`);
   if (!BITRIX_WEBHOOK_URL && !(BITRIX24_DOMAIN && BITRIX24_ACCESS_TOKEN)) {
     console.warn('\n⚠️  ВНИМАНИЕ: Задайте BITRIX_WEBHOOK_URL в .env\n');
   }
 });
+
+// ─── Graceful shutdown ───────────────────────────────────────────────────────
+function gracefulShutdown(signal) {
+  console.log(`\n${signal} получен — завершение работы`);
+  server.close(() => {
+    console.log('Сервер остановлен.');
+    process.exit(0);
+  });
+  setTimeout(() => {
+    console.warn('Принудительное завершение по таймауту');
+    process.exit(1);
+  }, 15_000);
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 export default app;

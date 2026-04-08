@@ -13,6 +13,7 @@ const callAnalyzer     = require('./services/callAnalyzer');
 const chatAnalyzer     = require('./services/chatAnalyzer');
 const bitrixClient     = require('./services/bitrix');
 const reporter         = require('./utils/reporter');
+const { metricsMiddleware, metricsEndpoint } = require('./utils/metrics');
 
 const app = express();
 
@@ -20,6 +21,8 @@ const app = express();
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('combined', { stream: { write: msg => logger.info(msg.trim()) } }));
+app.use(metricsMiddleware);
+app.get('/metrics', metricsEndpoint);
 
 // ── Multer (загрузка аудио) ────────────────────────────────────────────────
 const upload = multer({

@@ -34,6 +34,14 @@ router.post('/', async (req, res) => {
   const body  = req.body || {};
   const event = (body.event || body.EVENT || '').toUpperCase();
 
+  logger.debug('[webhook] Raw payload received', {
+    keys:        Object.keys(body),
+    event:       event || '(empty)',
+    hasAuth:     !!(body.auth || body.AUTH),
+    hasData:     !!(body.data || body.DATA),
+    contentType: req.get('content-type'),
+  });
+
   if (!event) {
     logger.warn('[webhook] Received request with no event field', {
       keys: Object.keys(body),

@@ -1,0 +1,210 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "title": "🟢 Статус сервисов (Up/Down)",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } }, "type": "value" }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "horizontal", "colorMode": "background", "graphMode": "none", "textMode": "auto" },
+      "targets": [
+        { "expr": "up{job=~\"fnr-.*|redis|node-exporter|cadvisor\"}", "legendFormat": "{{ job }}", "refId": "A" }
+      ]
+    },
+    {
+      "title": "📊 HTTP запросов/сек (по сервисам)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 20, "gradientMode": "scheme" } },
+        "overrides": []
+      },
+      "targets": [
+        { "expr": "rate(http_requests_total{job=~\"fnr-.*\"}[5m])", "legendFormat": "{{ job }} {{ method }} {{ status_code }}", "refId": "A" }
+      ]
+    },
+    {
+      "title": "⏱ Latency P95 (мс)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 10 } },
+        "overrides": []
+      },
+      "targets": [
+        { "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job=~\"fnr-.*\"}[5m])) * 1000", "legendFormat": "{{ job }}", "refId": "A" }
+      ]
+    },
+    {
+      "title": "🤖 AI классификаций/мин (webhook)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "custom": { "drawStyle": "bars", "fillOpacity": 80, "gradientMode": "hue" } },
+        "overrides": []
+      },
+      "targets": [
+        { "expr": "rate(ai_classifications_total{job=\"fnr-webhook\"}[5m]) * 60", "legendFormat": "{{ intent }}", "refId": "A" },
+        { "expr": "rate(ai_classification_errors_total{job=\"fnr-webhook\"}[5m]) * 60", "legendFormat": "errors", "refId": "B" }
+      ]
+    },
+    {
+      "title": "🏷 Маркировка — коды/мин",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "custom": { "drawStyle": "bars", "fillOpacity": 80, "gradientMode": "hue" } },
+        "overrides": []
+      },
+      "targets": [
+        { "expr": "rate(marking_codes_generated_total{job=\"fnr-marking\"}[5m]) * 60", "legendFormat": "generated", "refId": "A" },
+        { "expr": "rate(marking_orders_processed_total{job=\"fnr-marking\"}[5m]) * 60", "legendFormat": "orders", "refId": "B" }
+      ]
+    },
+    {
+      "title": "📞 CommAnalysis — анализов/мин",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "custom": { "drawStyle": "bars", "fillOpacity": 80, "gradientMode": "hue" } },
+        "overrides": []
+      },
+      "targets": [
+        { "expr": "rate(commanalysis_calls_analyzed_total{job=\"fnr-commanalysis\"}[5m]) * 60", "legendFormat": "calls", "refId": "A" },
+        { "expr": "rate(commanalysis_chats_analyzed_total{job=\"fnr-commanalysis\"}[5m]) * 60", "legendFormat": "chats", "refId": "B" }
+      ]
+    },
+    {
+      "title": "🔴 Redis — память / ключи",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "bytes", "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 15 } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "keys" }, "properties": [{ "id": "unit", "value": "short" }, { "id": "custom.axisPlacement", "value": "right" }] }
+        ]
+      },
+      "targets": [
+        { "expr": "redis_memory_used_bytes", "legendFormat": "used_memory", "refId": "A" },
+        { "expr": "redis_memory_max_bytes", "legendFormat": "max_memory", "refId": "B" },
+        { "expr": "redis_db_keys{db=\"db0\"}", "legendFormat": "keys", "refId": "C" }
+      ]
+    },
+    {
+      "title": "🐳 Docker — CPU по контейнерам",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "percentunit", "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 20 } },
+        "overrides": []
+      },
+      "targets": [
+        { "expr": "rate(container_cpu_usage_seconds_total{name=~\"fnr-.*\"}[5m])", "legendFormat": "{{ name }}", "refId": "A" }
+      ]
+    },
+    {
+      "title": "🐳 Docker — RAM по контейнерам",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "unit": "bytes", "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 20 } },
+        "overrides": []
+      },
+      "targets": [
+        { "expr": "container_memory_usage_bytes{name=~\"fnr-.*\"}", "legendFormat": "{{ name }}", "refId": "A" }
+      ]
+    },
+    {
+      "title": "🔥 Ошибки HTTP (5xx) / мин",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": { "custom": { "drawStyle": "bars", "fillOpacity": 80, "gradientMode": "hue" }, "color": { "mode": "fixed", "fixedColor": "red" } },
+        "overrides": []
+      },
+      "targets": [
+        { "expr": "rate(http_requests_total{job=~\"fnr-.*\", status_code=~\"5..\"}[5m]) * 60", "legendFormat": "{{ job }} {{ status_code }}", "refId": "A" }
+      ]
+    },
+    {
+      "title": "💻 Хост — CPU / RAM / Disk",
+      "type": "gauge",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 36 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0, "max": 1,
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.7 }, { "color": "red", "value": 0.9 }] }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "horizontal", "showThresholdLabels": false },
+      "targets": [
+        { "expr": "1 - avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m]))", "legendFormat": "CPU", "refId": "A" },
+        { "expr": "1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes", "legendFormat": "RAM", "refId": "B" },
+        { "expr": "1 - node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"}", "legendFormat": "Disk /", "refId": "C" }
+      ]
+    },
+    {
+      "title": "🩺 Health-check пробы",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 42 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "options": { "0": { "text": "FAIL", "color": "red" }, "1": { "text": "OK", "color": "green" } }, "type": "value" }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "horizontal", "colorMode": "background" },
+      "targets": [
+        { "expr": "probe_success{job=\"blackbox-health\"}", "legendFormat": "{{ instance }}", "refId": "A" }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["flex-n-roll", "monitoring", "overview"],
+  "templating": {
+    "list": [
+      {
+        "current": { "selected": false, "text": "Prometheus", "value": "Prometheus" },
+        "hide": 0,
+        "includeAll": false,
+        "name": "DS_PROMETHEUS",
+        "query": "prometheus",
+        "type": "datasource"
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "title": "FLEX-N-ROLL PRO — Overview",
+  "uid": "fnr-overview-v1",
+  "version": 1
+}

@@ -1,0 +1,157 @@
+# =============================================================================
+# FLEX-N-ROLL PRO — Monitoring Stack (Grafana + Prometheus + Exporters)
+# =============================================================================
+# Запуск:
+#   docker compose -f docker-compose.monitoring.yml up -d
+#
+# Grafana UI:  http://localhost:3001  (admin / admin)
+# Prometheus:  http://localhost:9090
+#
+# Подключается к основной сети fnr-net (основной compose должен быть запущен).
+# =============================================================================
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Prometheus — сборщик и хранилище метрик
+  # ---------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: fnr-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    networks:
+      - fnr-net
+
+  # ---------------------------------------------------------------------------
+  # Grafana — визуализация и дашборды
+  # ---------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: fnr-grafana
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: "http://localhost:3001"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/fnr-overview.json
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    networks:
+      - fnr-net
+
+  # ---------------------------------------------------------------------------
+  # Node Exporter — метрики хост-машины (CPU, RAM, Disk)
+  # ---------------------------------------------------------------------------
+  node-exporter:
+    image: prom/node-exporter:v1.8.1
+    container_name: fnr-node-exporter
+    restart: unless-stopped
+    expose:
+      - "9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/rootfs'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    networks:
+      - fnr-net
+
+  # ---------------------------------------------------------------------------
+  # cAdvisor — метрики Docker-контейнеров (CPU, RAM, Network per container)
+  # ---------------------------------------------------------------------------
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: fnr-cadvisor
+    restart: unless-stopped
+    expose:
+      - "8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    privileged: true
+    devices:
+      - /dev/kmsg
+    networks:
+      - fnr-net
+
+  # ---------------------------------------------------------------------------
+  # Redis Exporter — метрики Redis (память, ключи, ops/sec)
+  # ---------------------------------------------------------------------------
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.61.0
+    container_name: fnr-redis-exporter
+    restart: unless-stopped
+    expose:
+      - "9121"
+    environment:
+      REDIS_ADDR: redis://redis:6379
+    # Note: redis is in the main docker-compose.yml — start main compose first
+    networks:
+      - fnr-net
+
+  # ---------------------------------------------------------------------------
+  # Blackbox Exporter — HTTP health-check пробы
+  # ---------------------------------------------------------------------------
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.25.0
+    container_name: fnr-blackbox-exporter
+    restart: unless-stopped
+    expose:
+      - "9115"
+    volumes:
+      - ./monitoring/blackbox/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+    networks:
+      - fnr-net
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+
+# =============================================================================
+# Networks — подключаемся к существующей fnr-net
+# =============================================================================
+networks:
+  fnr-net:
+    external: true

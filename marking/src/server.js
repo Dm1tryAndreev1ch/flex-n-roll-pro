@@ -11,6 +11,7 @@ const logger = require('./utils/logger');
 const markingRouter = require('./routes/marking');
 const webhookRouter = require('./routes/webhook');
 const reporter = require('./utils/reporter');
+const { metricsMiddleware, metricsEndpoint } = require('./utils/metrics');
 
 // ---------------------------------------------------------------------------
 // Инициализация директорий хранилища
@@ -38,6 +39,8 @@ app.use(
     stream: { write: (msg) => logger.http(msg.trim()) },
   })
 );
+app.use(metricsMiddleware);
+app.get('/metrics', metricsEndpoint);
 
 // ---------------------------------------------------------------------------
 // Маршруты
@@ -51,6 +54,13 @@ app.use('/reports', express.static(path.join(config.storage.dataDir, 'reports'))
 // Health-check
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', ts: new Date().toISOString() });
+});
+
+// ---------------------------------------------------------------------------
+// 404 — маршрут не найден
+// ---------------------------------------------------------------------------
+app.use((_req, res) => {
+  res.status(404).json({ success: false, error: 'Not found' });
 });
 
 // ---------------------------------------------------------------------------
@@ -73,8 +83,10 @@ cron.schedule('0 8 1 * *', async () => {
   try {
     const now = new Date();
     const year = now.getFullYear();
-    const month = now.getMonth() + 1; // предыдущий месяц
-    await reporter.generateMonthlySummary(year, month > 1 ? month - 1 : 12);
+    const prevMonth = now.getMonth(); // 0-indexed: 0 = январь
+    const reportMonth = prevMonth === 0 ? 12 : prevMonth;
+    const reportYear = prevMonth === 0 ? year - 1 : year;
+    await reporter.generateMonthlySummary(reportYear, reportMonth);
     logger.info('[cron] Ежемесячная сводка сформирована');
   } catch (e) {
     logger.error(`[cron] Ошибка генерации сводки: ${e.message}`);

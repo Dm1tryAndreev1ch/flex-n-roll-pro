@@ -2,11 +2,11 @@
 'use strict';
 
 const express    = require('express');
-const bodyParser = require('body-parser');
 const helmet     = require('helmet');
 
 const config  = require('../config/config');
 const logger  = require('./utils/logger');
+const { metricsMiddleware, metricsEndpoint } = require('./utils/metrics');
 const { verifyBitrixRequest } = require('./middleware/auth');
 const { webhookRateLimit }    = require('./middleware/rateLimit');
 const webhookRouter           = require('./routes/webhook');
@@ -19,9 +19,13 @@ app.use(helmet());
 // Trust first proxy (nginx, Cloudflare, etc.) for correct client IP
 app.set('trust proxy', 1);
 
+// ─── Prometheus metrics ───────────────────────────────────────────────────────
+app.use(metricsMiddleware);
+app.get('/metrics', metricsEndpoint);
+
 // ─── Body parsers ─────────────────────────────────────────────────────────────
-app.use(bodyParser.json({ limit: '5mb' }));
-app.use(bodyParser.urlencoded({ extended: true, limit: '5mb' }));
+app.use(express.json({ limit: '5mb' }));
+app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 
 // ─── Health check (no auth, no rate limit) ────────────────────────────────────
 app.get('/health', (_req, res) => {

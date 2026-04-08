@@ -35,9 +35,10 @@ const config = {
   },
 
   bitrix: {
-    webhookUrl:   required('BITRIX_WEBHOOK_URL'),
-    portalDomain: required('BITRIX_PORTAL_DOMAIN'),
-    timeout:      parseIntSafe(optional('BITRIX_TIMEOUT_MS', '15000'), 15000),
+    webhookUrl:     required('BITRIX_WEBHOOK_URL'),
+    portalDomain:   optional('BITRIX_PORTAL_DOMAIN', ''),
+    outgoingToken:  optional('BITRIX_OUTGOING_TOKEN', ''),
+    timeout:        parseIntSafe(optional('BITRIX_TIMEOUT_MS', '15000'), 15000),
   },
 
   redis: {
