@@ -29,7 +29,7 @@ module.exports = {
 
   // ── Битрикс24 ─────────────────────────────────────────────────────────────
   bitrix: {
-    webhookUrl: process.env.BITRIX_WEBHOOK_URL.replace(/\/?$/, '/'),
+    webhookUrl: process.env.BITRIX_WEBHOOK_URL.replace(/\/+$/, '/'),
     portal:     process.env.BITRIX_PORTAL_DOMAIN || '',
   },
 

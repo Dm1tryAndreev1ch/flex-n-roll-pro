@@ -18,7 +18,7 @@ const { withRetry, isTransientError } = require('../utils/retry');
 async function callBitrix(method, params = {}) {
   return withRetry(
     async (attempt) => {
-      const url = `${config.bitrix.webhookUrl.replace(/\/?$/, '/')}${method}`;
+      const url = `${config.bitrix.webhookUrl.replace(/\/+$/, '/')}${method}`;
 
       logger.debug(`[bitrix] Calling ${method}`, { attempt });
 

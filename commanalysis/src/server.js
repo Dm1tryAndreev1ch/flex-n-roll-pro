@@ -231,7 +231,8 @@ app.post('/api/webhook/bitrix', async (req, res) => {
   // Verify Bitrix24 portal domain
   const auth = req.body?.auth || {};
   const domain = auth.domain || auth.DOMAIN;
-  if (process.env.NODE_ENV === 'production' && domain !== process.env.BITRIX_PORTAL_DOMAIN) {
+  const expectedDomain = config.bitrix?.portal || process.env.BITRIX_PORTAL_DOMAIN;
+  if (process.env.NODE_ENV === 'production' && expectedDomain && domain !== expectedDomain) {
     logger.warn('[webhook] Domain mismatch or missing', { domain });
     return res.status(401).send('Unauthorized');
   }
