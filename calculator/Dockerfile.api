@@ -1,10 +1,18 @@
 FROM node:20-alpine
 WORKDIR /app
-COPY package*.json ./
-RUN npm ci --omit=dev
+
+# Copy only API-specific package manifest
+COPY package.api.json ./package.json
+
+# Install only API dependencies (no lock file needed for isolated manifest)
+RUN npm install --omit=dev
+
 COPY server.js ./
+
 EXPOSE 3001
+
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup \
     && chown -R appuser:appgroup /app
 USER appuser
+
 CMD ["node", "server.js"]
