@@ -83,4 +83,18 @@ function webhookRateLimit(req, res, next) {
     });
 }
 
-module.exports = { webhookRateLimit, buildRateLimiter };
+async function cleanup() {
+  // Close Redis connection used by rate limiter store (if any)
+  try {
+    const { createClient } = require('redis');
+    // Access the existing client via the limiter's store if available
+    if (limiter && limiter.store && limiter.store.client && limiter.store.client.isOpen) {
+      await limiter.store.client.quit();
+      logger.info('[rateLimit] Redis connection closed');
+    }
+  } catch (_) {
+    // No Redis client to clean up
+  }
+}
+
+module.exports = { webhookRateLimit, buildRateLimiter, cleanup };

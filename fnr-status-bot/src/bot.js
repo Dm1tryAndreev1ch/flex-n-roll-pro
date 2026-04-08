@@ -184,14 +184,8 @@ async function startBot() {
     logger.info('🚀 Запуск бота FLEX-N-ROLL Status Bot...');
 
     // Graceful shutdown
-    const shutdown = (signal) => {
-      logger.info(`Получен сигнал ${signal}. Завершение работы...`);
-      bot.stop(signal);
-      process.exit(0);
-    };
-
-    process.once('SIGINT', () => shutdown('SIGINT'));
-    process.once('SIGTERM', () => shutdown('SIGTERM'));
+    process.once('SIGINT', async () => { await bot.stop('SIGINT'); process.exit(0); });
+    process.once('SIGTERM', async () => { await bot.stop('SIGTERM'); process.exit(0); });
 
     await bot.launch();
 

@@ -251,7 +251,8 @@ app.post('/api/webhook/bitrix', async (req, res) => {
       const dealId = data?.CRM_ENTITY_ID;
       if (callId && dealId) {
         // Небольшая задержка — запись может ещё записываться
-        setTimeout(async () => {
+        const job = (async () => {
+          await sleep(10_000);
           try {
             const callInfo = await bitrixClient.getCallInfo(callId);
             if (callInfo?.RECORD_URL) {
@@ -279,7 +280,8 @@ app.post('/api/webhook/bitrix', async (req, res) => {
           } catch (e) {
             logger.error(`[webhook] Ошибка обработки callId=${callId}: ${e.message}`);
           }
-        }, 10_000); // 10 секунд на запись файла
+        })();
+        trackJob(job);
       }
     }
   } catch (err) {
@@ -294,10 +296,42 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
+// ── Helpers ───────────────────────────────────────────────────────────────
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+// ── In-flight job tracking ────────────────────────────────────────────────
+const activeJobs = new Set();
+
+function trackJob(promise) {
+  activeJobs.add(promise);
+  promise.finally(() => activeJobs.delete(promise));
+  return promise;
+}
+
 // ── Запуск ─────────────────────────────────────────────────────────────────
 const PORT = config.server.port;
-app.listen(PORT, () => {
-  logger.info(`FLEX-N-ROLL CommAnalysis API запущен на порту ${PORT}`);
+const server = app.listen(PORT, () => {
+  logger.info(`[server] commanalysis listening on port ${PORT}`);
 });
+
+// ── Graceful shutdown ─────────────────────────────────────────────────────
+function gracefulShutdown(signal) {
+  logger.info(`[server] Received ${signal}, shutting down gracefully…`);
+  server.close(async () => {
+    if (activeJobs.size > 0) {
+      logger.info(`[server] Waiting for ${activeJobs.size} active job(s) to complete…`);
+      await Promise.allSettled([...activeJobs]);
+    }
+    logger.info('[server] All jobs done. Goodbye.');
+    process.exit(0);
+  });
+  setTimeout(() => {
+    logger.warn('[server] Forced shutdown after timeout');
+    process.exit(1);
+  }, 30_000);
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 module.exports = app; // для тестов

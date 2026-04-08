@@ -1,8 +1,8 @@
 # =============================================================================
 # FLEX-N-ROLL PRO — Unified Docker Compose
 # =============================================================================
-# Covers all services: webhook, calculator, commanalysis, fnr-status-bot,
-# marking, fnr-analytics, and Redis.
+# Covers all services: webhook, calculator, commanalysis, commanalysis-scheduler,
+# fnr-status-bot, marking, fnr-analytics, and Redis.
 #
 # Usage:
 #   docker compose up --build -d
@@ -137,6 +137,30 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+    networks:
+      - fnr-net
+
+  # ---------------------------------------------------------------------------
+  # CommAnalysis Scheduler — daily batch report job (runs via node-cron inside)
+  # Separate container so main server isn't restarted on scheduler config changes
+  # ---------------------------------------------------------------------------
+  commanalysis-scheduler:
+    build:
+      context: ./commanalysis
+      dockerfile: Dockerfile
+    container_name: fnr-commanalysis-scheduler
+    restart: unless-stopped
+    command: ["node", "scheduler/dailyBatch.js"]
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+    volumes:
+      - commanalysis-logs:/app/logs
+      - commanalysis-tmp:/tmp/commanalysis
+    depends_on:
+      commanalysis:
+        condition: service_healthy
     networks:
       - fnr-net
 

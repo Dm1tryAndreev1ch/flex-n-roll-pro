@@ -69,8 +69,12 @@ const server = app.listen(PORT, () => {
 });
 
 // ─── Graceful shutdown ────────────────────────────────────────────────────────
-function gracefulShutdown(signal) {
+async function gracefulShutdown(signal) {
   logger.info(`[server] Received ${signal}, shutting down gracefully…`);
+
+  // Signal rate limiter to cleanup Redis
+  const { cleanup } = require('./middleware/rateLimit');
+  if (cleanup) await cleanup();
 
   server.close((err) => {
     if (err) {

@@ -19,8 +19,7 @@
     "node-cron": "^3.0.3",
     "qrcode": "^1.5.3",
     "unzipper": "^0.12.3",
-    "winston": "^3.13.0",
-    "xml2js": "^0.6.2"
+    "winston": "^3.13.0"
   },
   "devDependencies": {
     "eslint": "^9.3.0",

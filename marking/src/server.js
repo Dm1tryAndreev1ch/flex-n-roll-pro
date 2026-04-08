@@ -94,10 +94,18 @@ const server = app.listen(config.port, () => {
 process.on('SIGTERM', () => {
   logger.info('SIGTERM получен — завершение работы');
   server.close(() => process.exit(0));
+  setTimeout(() => {
+    logger.warn('[server] Forced shutdown after timeout');
+    process.exit(1);
+  }, 15_000);
 });
 process.on('SIGINT', () => {
   logger.info('SIGINT получен — завершение работы');
   server.close(() => process.exit(0));
+  setTimeout(() => {
+    logger.warn('[server] Forced shutdown after timeout');
+    process.exit(1);
+  }, 15_000);
 });
 
 module.exports = app; // для тестов
