@@ -25,11 +25,6 @@ const config = {
     isProduction: optional('NODE_ENV', 'development') === 'production',
   },
 
-  webhook: {
-    secret: required('WEBHOOK_SECRET'),
-    signatureHeader: optional('WEBHOOK_SIGNATURE_HEADER', 'x-bitrix-signature'),
-  },
-
   openai: {
     apiKey:      optional('OPENAI_API_KEY', 'lm-studio'),
     baseURL:     optional('OPENAI_BASE_URL', 'http://localhost:1234/v1'),
@@ -40,8 +35,9 @@ const config = {
   },
 
   bitrix: {
-    webhookUrl: required('BITRIX_WEBHOOK_URL'),
-    timeout:    parseIntSafe(optional('BITRIX_TIMEOUT_MS', '15000'), 15000),
+    webhookUrl:   required('BITRIX_WEBHOOK_URL'),
+    portalDomain: required('BITRIX_PORTAL_DOMAIN'),
+    timeout:      parseIntSafe(optional('BITRIX_TIMEOUT_MS', '15000'), 15000),
   },
 
   redis: {

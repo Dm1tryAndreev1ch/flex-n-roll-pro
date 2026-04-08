@@ -27,11 +27,11 @@ const {
  * Bitrix24 sends event data as URL-encoded or JSON body.
  */
 router.post('/', async (req, res) => {
-  // Respond immediately to prevent Bitrix24 timeout (max ~5 s)
-  res.status(200).json({ ok: true });
+  // Respond immediately — Bitrix24 expects plain text 200, not JSON
+  res.status(200).send('ok');
 
   const body  = req.body || {};
-  const event = body.event || body.EVENT;
+  const event = (body.event || body.EVENT || '').toUpperCase();
 
   if (!event) {
     logger.warn('[webhook] Received request with no event field', {
@@ -43,7 +43,7 @@ router.post('/', async (req, res) => {
   logger.info('[webhook] Event received', { event });
 
   try {
-    switch (event.toUpperCase()) {
+    switch (event) {
       case 'ONCRMLEADADD':
         await handleCrmLeadAdd(body);
         break;
@@ -68,20 +68,28 @@ router.post('/', async (req, res) => {
 
 /**
  * Handle onCrmLeadAdd — a new lead was created in Bitrix24 CRM.
+ *
+ * Bitrix24 outgoing webhook for OnCrmLeadAdd sends (urlencoded):
+ *   event=ONCRMLEADADD
+ *   data[FIELDS][ID]=123
+ *   auth[domain]=mycompany.bitrix24.ru
+ *   ...
+ * With body-parser extended:true these parse as body.data.FIELDS.ID
  */
 async function handleCrmLeadAdd(body) {
   const data   = body.data || body.DATA || {};
-  const fields = data.FIELDS || data.fields || data;
+  const fields = data.FIELDS || data.fields || {};
   const leadId = fields.ID || fields.id;
 
   if (!leadId) {
-    logger.warn('[webhook:crmLeadAdd] Missing lead ID in event payload', { fields });
+    logger.warn('[webhook:crmLeadAdd] Missing lead ID in event payload', { data });
     return;
   }
 
   logger.info('[webhook:crmLeadAdd] Processing new lead', { leadId });
 
-  // Extract message from lead fields
+  // OnCrmLeadAdd only sends the lead ID — full fields require a REST API call.
+  // For now we pass what we have; the pipeline classifies based on available data.
   const message = [
     fields.COMMENTS,
     fields.TITLE,
@@ -105,15 +113,26 @@ async function handleCrmLeadAdd(body) {
 
 /**
  * Handle onImConnectorMessageAdd — a new message arrived via Open Lines.
+ *
+ * Bitrix24 outgoing webhook for OnImConnectorMessageAdd sends (urlencoded):
+ *   event=ONIMCONNECTORMESSAGEADD
+ *   data[PARAMS][MESSAGE]=Hello
+ *   data[PARAMS][DIALOG_ID]=chat123
+ *   data[PARAMS][CRM_ENTITY_ID]=456
+ *   data[USER][NAME]=John
+ *   ...
+ * With body-parser extended:true → body.data.PARAMS.MESSAGE etc.
  */
 async function handleImMessageAdd(body) {
-  const data     = body.data || body.DATA || {};
-  const message  = data.MESSAGE || data.message || data.CONTENT || '';
-  const leadId   = data.CRM_ENTITY_ID || data.crm_entity_id || null;
-  const dialogId = data.DIALOG_ID || data.dialog_id || null;
+  const data   = body.data || body.DATA || {};
+  const params = data.PARAMS || data.params || data;
+
+  const message  = params.MESSAGE  || params.message  || data.MESSAGE || '';
+  const leadId   = params.CRM_ENTITY_ID || data.CRM_ENTITY_ID || null;
+  const dialogId = params.DIALOG_ID     || data.DIALOG_ID     || null;
 
   // Extract attached files
-  const files    = data.FILES || data.files || data.ATTACHMENTS || [];
+  const files    = params.FILES || data.FILES || data.ATTACHMENTS || [];
   const fileNames = Array.isArray(files)
     ? files.map((f) => f.NAME || f.name || String(f)).filter(Boolean)
     : [];

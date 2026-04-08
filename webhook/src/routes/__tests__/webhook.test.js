@@ -1,9 +1,11 @@
 const request = require('supertest');
-const crypto = require('crypto');
-const app = require('../../server'); // The Express app
-const config = require('../../../config/config');
 
-// We need to mock the services
+// Set test env vars before importing app/config
+process.env.BITRIX_WEBHOOK_URL = 'https://test.bitrix24.ru/rest/1/test-token/';
+process.env.BITRIX_PORTAL_DOMAIN = 'test.bitrix24.ru';
+
+const app = require('../../server');
+
 jest.mock('../../services/lmstudio', () => ({
   classifyMessage: jest.fn(),
 }));
@@ -11,7 +13,7 @@ jest.mock('../../services/lmstudio', () => ({
 jest.mock('../../services/bitrix', () => ({
   updateLead: jest.fn(),
   createTask: jest.fn(),
-  sendImMessage: jest.fn(),
+  sendMessage: jest.fn(),
   calculateDeadline: jest.fn().mockReturnValue(new Date()),
 }));
 
@@ -28,8 +30,7 @@ const bitrix = require('../../services/bitrix');
 describe('Webhook Router', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    
-    // Default LM Studio mock output
+
     lmstudio.classifyMessage.mockResolvedValue({
       intent: 'quote_request',
       product_type: 'wide_format',
@@ -41,28 +42,19 @@ describe('Webhook Router', () => {
     });
   });
 
-  const generateSignature = (payload) => {
-    const rawBody = Buffer.from(JSON.stringify(payload), 'utf8');
-    return crypto.createHmac('sha256', config.webhook.secret).update(rawBody).digest('hex');
-  };
-
   it('should return 200 OK immediately and process onCrmLeadAdd in background', async () => {
-    const payload = {
-      event: 'ONCRMLEADADD',
-      data: { FIELDS: { ID: 123, COMMENTS: 'Test lead msg' } }
-    };
-    
-    const signature = generateSignature(payload);
-
     const res = await request(app)
       .post('/webhook')
-      .set(config.webhook.signatureHeader, signature)
-      .send(payload);
+      .type('form')
+      .send({
+        event: 'ONCRMLEADADD',
+        auth: { domain: 'test.bitrix24.ru' },
+        data: { FIELDS: { ID: '123', COMMENTS: 'Test lead msg' } },
+      });
 
     expect(res.statusCode).toEqual(200);
-    expect(res.body).toEqual({ ok: true });
+    expect(res.text).toEqual('ok');
 
-    // Let the event loop cycle so the async background handler finishes
     await new Promise(process.nextTick);
 
     expect(lmstudio.classifyMessage).toHaveBeenCalledTimes(1);
@@ -70,36 +62,48 @@ describe('Webhook Router', () => {
     expect(bitrix.createTask).toHaveBeenCalledTimes(1);
   });
 
-  it('should fail with 401 if missing signature header', async () => {
-    const payload = { event: 'ONCRMLEADADD' };
+  it('should fail with 401 if auth.domain is missing', async () => {
     const res = await request(app)
       .post('/webhook')
-      .send(payload);
+      .type('form')
+      .send({ event: 'ONCRMLEADADD' });
 
     expect(res.statusCode).toEqual(401);
-    expect(res.body.error).toBe('Missing signature header');
+    expect(res.body.error).toBe('Unauthorized: missing auth domain');
+  });
+
+  it('should fail with 401 if auth.domain does not match', async () => {
+    const res = await request(app)
+      .post('/webhook')
+      .type('form')
+      .send({
+        event: 'ONCRMLEADADD',
+        auth: { domain: 'evil.bitrix24.ru' },
+      });
+
+    expect(res.statusCode).toEqual(401);
+    expect(res.body.error).toBe('Unauthorized: domain mismatch');
   });
 
   it('should process onImConnectorMessageAdd correctly', async () => {
-    const payload = {
-      event: 'ONIMCONNECTORMESSAGEADD',
-      data: { MESSAGE: 'Hello from telegram', CRM_ENTITY_ID: 123, DIALOG_ID: 'chat123' }
-    };
-
-    const signature = generateSignature(payload);
-
     const res = await request(app)
       .post('/webhook')
-      .set(config.webhook.signatureHeader, signature)
-      .send(payload);
+      .type('form')
+      .send({
+        event: 'ONIMCONNECTORMESSAGEADD',
+        auth: { domain: 'test.bitrix24.ru' },
+        data: {
+          PARAMS: { MESSAGE: 'Hello from telegram', CRM_ENTITY_ID: '123', DIALOG_ID: 'chat123' },
+          USER: { NAME: 'Test User' },
+        },
+      });
 
     expect(res.statusCode).toEqual(200);
 
     await new Promise(process.nextTick);
 
     expect(lmstudio.classifyMessage).toHaveBeenCalledTimes(1);
-    expect(bitrix.sendImMessage).toHaveBeenCalledTimes(1);
-    // Since auto_reply is output by our mock, it should send it back
-    expect(bitrix.sendImMessage).toHaveBeenCalledWith('chat123', 'Got it.');
+    expect(bitrix.sendMessage).toHaveBeenCalledTimes(1);
+    expect(bitrix.sendMessage).toHaveBeenCalledWith('chat123', 'Got it.');
   });
 });

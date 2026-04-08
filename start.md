@@ -54,9 +54,9 @@ cp webhook/.env.example webhook/.env
 
 | Service | Variable | Description |
 |---------|----------|-------------|
-| **webhook** | `WEBHOOK_SECRET` | HMAC signature secret for Bitrix24 webhooks |
+| **webhook** | `BITRIX_WEBHOOK_URL` | Bitrix24 incoming webhook URL (Settings → Integrations → Webhooks → Incoming webhook) |
+| **webhook** | `BITRIX_PORTAL_DOMAIN` | Your Bitrix24 portal domain, e.g. `mycompany.bitrix24.ru` (used to verify outgoing webhook origin) |
 | **webhook** | `OPENAI_BASE_URL` | LM Studio endpoint (default: `http://localhost:1234/v1`) |
-| **webhook** | `BITRIX_WEBHOOK_URL` | Bitrix24 incoming webhook URL (Settings → Integrations → Webhook) |
 | **webhook** | `REDIS_URL` | Redis connection string (Docker: `redis://redis:6379`) |
 | **calculator** | `BITRIX24_WEBHOOK_URL` | Bitrix24 webhook for CRM data |
 | **commanalysis** | `OPENAI_API_KEY` | OpenAI API key for Whisper + GPT |
@@ -191,8 +191,24 @@ npm run dev
 - Requires Redis to be running
 - Requires LM Studio running on port 1234 (or configure `OPENAI_BASE_URL`)
 - Has a `/health` endpoint for monitoring
-- Create an incoming webhook in Bitrix24 (Settings → Integrations → Webhook → Incoming webhook) with CRM + Tasks + IM permissions. Set `BITRIX_WEBHOOK_URL` to the generated URL.
 - Logs to `./logs/`
+
+#### Bitrix24 webhook setup
+
+This service uses two Bitrix24 webhook types:
+
+1. **Outgoing webhook** (исходящий вебхук) — Bitrix24 POSTs event data to our server.
+   - Create in Bitrix24: Settings → Integrations → Webhooks → Outgoing webhook.
+   - Set handler URL to `http://your-server:3000/webhook`.
+   - Subscribe to events: `OnCrmLeadAdd`, `OnImConnectorMessageAdd`.
+   - No secret token needed — verification is by portal domain (`auth[domain]` in request body must match `BITRIX_PORTAL_DOMAIN`).
+
+2. **Incoming webhook** (входящий вебхук) — We call Bitrix24 REST API.
+   - Create in Bitrix24: Settings → Integrations → Webhooks → Incoming webhook.
+   - Required permissions: CRM, Tasks, IM.
+   - Set `BITRIX_WEBHOOK_URL` to the generated URL (e.g. `https://mycompany.bitrix24.ru/rest/1/TOKEN/`).
+
+3. Set `BITRIX_PORTAL_DOMAIN` to your portal domain (e.g. `mycompany.bitrix24.ru`).
 
 ### calculator (port 5173 dev / 8080 prod)
 

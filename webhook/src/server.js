@@ -7,9 +7,9 @@ const helmet     = require('helmet');
 
 const config  = require('../config/config');
 const logger  = require('./utils/logger');
-const { verifyWebhookSignature } = require('./middleware/auth');
-const { webhookRateLimit }       = require('./middleware/rateLimit');
-const webhookRouter              = require('./routes/webhook');
+const { verifyBitrixRequest } = require('./middleware/auth');
+const { webhookRateLimit }    = require('./middleware/rateLimit');
+const webhookRouter           = require('./routes/webhook');
 
 const app = express();
 
@@ -19,25 +19,9 @@ app.use(helmet());
 // Trust first proxy (nginx, Cloudflare, etc.) for correct client IP
 app.set('trust proxy', 1);
 
-// ─── Raw body capture (required for HMAC verification) ───────────────────────
-app.use(
-  bodyParser.json({
-    limit: '5mb',
-    verify: (req, _res, buf) => {
-      req.rawBody = buf;
-    },
-  })
-);
-
-app.use(
-  bodyParser.urlencoded({
-    extended: true,
-    limit:    '5mb',
-    verify: (req, _res, buf) => {
-      if (!req.rawBody) req.rawBody = buf;
-    },
-  })
-);
+// ─── Body parsers ─────────────────────────────────────────────────────────────
+app.use(bodyParser.json({ limit: '5mb' }));
+app.use(bodyParser.urlencoded({ extended: true, limit: '5mb' }));
 
 // ─── Health check (no auth, no rate limit) ────────────────────────────────────
 app.get('/health', (_req, res) => {
@@ -54,7 +38,7 @@ app.get('/health', (_req, res) => {
 app.use(
   '/webhook',
   webhookRateLimit,
-  verifyWebhookSignature,
+  verifyBitrixRequest,
   webhookRouter
 );
 
