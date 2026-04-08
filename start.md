@@ -8,7 +8,7 @@ FLEX-N-ROLL PRO is a monorepo for a label/packaging printing company. It integra
 
 | Service | Directory | Description | Internal address | Stack |
 |---------|-----------|-------------|-----------------|-------|
-| **webhook** | `webhook/` | Bitrix24 webhook handler with LM Studio AI classification, OAuth2, SLA management | `fnr-webhook:3000` | Node 20, Express, Redis, OpenAI SDK |
+| **webhook** | `webhook/` | Bitrix24 webhook handler with LM Studio AI classification, SLA management | `fnr-webhook:3000` | Node 20, Express, Redis, OpenAI SDK |
 | **calculator** | `calculator/` | Label pricing calculator frontend (nginx SPA) | `fnr-calculator:80` | React 18, TypeScript, Vite, Tailwind |
 | **calculator-api** | `calculator/` | Calculator Express backend | `fnr-calculator-api:3001` | Node 20, Express |
 | **commanalysis** | `commanalysis/` | AI analysis of sales communications — transcription via Whisper, evaluation via GPT | `fnr-commanalysis:3000` | Node 18, Express, OpenAI, FFmpeg |
@@ -56,7 +56,7 @@ cp webhook/.env.example webhook/.env
 |---------|----------|-------------|
 | **webhook** | `WEBHOOK_SECRET` | HMAC signature secret for Bitrix24 webhooks |
 | **webhook** | `OPENAI_BASE_URL` | LM Studio endpoint (default: `http://localhost:1234/v1`) |
-| **webhook** | `BITRIX_CLIENT_ID`, `BITRIX_CLIENT_SECRET` | Bitrix24 OAuth2 credentials |
+| **webhook** | `BITRIX_WEBHOOK_URL` | Bitrix24 incoming webhook URL (Settings → Integrations → Webhook) |
 | **webhook** | `REDIS_URL` | Redis connection string (Docker: `redis://redis:6379`) |
 | **calculator** | `BITRIX24_WEBHOOK_URL` | Bitrix24 webhook for CRM data |
 | **commanalysis** | `OPENAI_API_KEY` | OpenAI API key for Whisper + GPT |
@@ -191,7 +191,7 @@ npm run dev
 - Requires Redis to be running
 - Requires LM Studio running on port 1234 (or configure `OPENAI_BASE_URL`)
 - Has a `/health` endpoint for monitoring
-- Stores OAuth tokens in `./data/bitrix_tokens.json`
+- Create an incoming webhook in Bitrix24 (Settings → Integrations → Webhook → Incoming webhook) with CRM + Tasks + IM permissions. Set `BITRIX_WEBHOOK_URL` to the generated URL.
 - Logs to `./logs/`
 
 ### calculator (port 5173 dev / 8080 prod)

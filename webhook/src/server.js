@@ -10,7 +10,6 @@ const logger  = require('./utils/logger');
 const { verifyWebhookSignature } = require('./middleware/auth');
 const { webhookRateLimit }       = require('./middleware/rateLimit');
 const webhookRouter              = require('./routes/webhook');
-const { getAuthUrl, exchangeCode } = require('./services/bitrix');
 
 const app = express();
 
@@ -49,38 +48,6 @@ app.get('/health', (_req, res) => {
     env:       config.server.nodeEnv,
     uptime:    process.uptime(),
   });
-});
-
-// ─── OAuth 2.0 routes ─────────────────────────────────────────────────────────
-
-/**
- * GET /oauth/init
- * Redirects the administrator to Bitrix24 OAuth consent screen.
- */
-app.get('/oauth/init', (_req, res) => {
-  const url = getAuthUrl();
-  logger.info('[oauth] Redirecting to Bitrix24 auth URL');
-  res.redirect(url);
-});
-
-/**
- * GET /oauth/callback
- * Bitrix24 redirects here with ?code=... after user grants access.
- */
-app.get('/oauth/callback', async (req, res) => {
-  const { code } = req.query;
-  if (!code) {
-    return res.status(400).json({ error: 'Missing code parameter' });
-  }
-
-  try {
-    await exchangeCode(code);
-    logger.info('[oauth] Tokens obtained and saved');
-    res.json({ ok: true, message: 'OAuth tokens saved. You may close this tab.' });
-  } catch (err) {
-    logger.error('[oauth] Token exchange failed', { error: err.message });
-    res.status(500).json({ error: 'Token exchange failed', detail: err.message });
-  }
 });
 
 // ─── Webhook routes ───────────────────────────────────────────────────────────

@@ -40,16 +40,8 @@ const config = {
   },
 
   bitrix: {
-    clientId:     required('BITRIX_CLIENT_ID'),
-    clientSecret: required('BITRIX_CLIENT_SECRET'),
-    portalDomain: required('BITRIX_PORTAL_DOMAIN'),
-    redirectUri:  required('BITRIX_REDIRECT_URI'),
-
-    accessToken:  optional('BITRIX_ACCESS_TOKEN'),
-    refreshToken: optional('BITRIX_REFRESH_TOKEN'),
-
-    tokenFile: optional('BITRIX_TOKEN_FILE', './data/bitrix_tokens.json'),
-    timeout:   parseIntSafe(optional('BITRIX_TIMEOUT_MS', '15000'), 15000),
+    webhookUrl: required('BITRIX_WEBHOOK_URL'),
+    timeout:    parseIntSafe(optional('BITRIX_TIMEOUT_MS', '15000'), 15000),
   },
 
   redis: {

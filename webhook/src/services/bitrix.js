@@ -2,113 +2,14 @@
 'use strict';
 
 const axios  = require('axios');
-const fs     = require('fs');
-const path   = require('path');
 const config = require('../../config/config');
 const logger = require('../utils/logger');
 const { withRetry, isTransientError } = require('../utils/retry');
 
-// ─── Token storage ────────────────────────────────────────────────────────────
-let _tokens = {
-  accessToken:  config.bitrix.accessToken,
-  refreshToken: config.bitrix.refreshToken,
-};
-
-function loadTokensFromFile() {
-  try {
-    const dir = path.dirname(config.bitrix.tokenFile);
-    fs.mkdirSync(dir, { recursive: true });
-    if (fs.existsSync(config.bitrix.tokenFile)) {
-      const data = JSON.parse(fs.readFileSync(config.bitrix.tokenFile, 'utf8'));
-      _tokens = { ...data };
-      logger.debug('[bitrix] Tokens loaded from file');
-    }
-  } catch (err) {
-    logger.warn('[bitrix] Could not load tokens from file', { error: err.message });
-  }
-}
-
-function saveTokensToFile() {
-  try {
-    const dir = path.dirname(config.bitrix.tokenFile);
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(config.bitrix.tokenFile, JSON.stringify(_tokens, null, 2), 'utf8');
-    logger.debug('[bitrix] Tokens saved to file');
-  } catch (err) {
-    logger.error('[bitrix] Could not save tokens to file', { error: err.message });
-  }
-}
-
-// Bootstrap tokens from file on module load
-loadTokensFromFile();
-
-// ─── OAuth helpers ────────────────────────────────────────────────────────────
-
-/**
- * Returns the OAuth2 authorisation URL.
- * Direct users here to obtain the initial code.
- */
-function getAuthUrl() {
-  const params = new URLSearchParams({
-    client_id:     config.bitrix.clientId,
-    response_type: 'code',
-    redirect_uri:  config.bitrix.redirectUri,
-  });
-  return `https://${config.bitrix.portalDomain}/oauth/authorize/?${params.toString()}`;
-}
-
-/**
- * Exchange an authorisation code for access + refresh tokens.
- * Call from /oauth/callback route.
- */
-async function exchangeCode(code) {
-  const url = `https://${config.bitrix.portalDomain}/oauth/token/`;
-  const params = {
-    grant_type:    'authorization_code',
-    client_id:     config.bitrix.clientId,
-    client_secret: config.bitrix.clientSecret,
-    redirect_uri:  config.bitrix.redirectUri,
-    code,
-  };
-
-  const response = await axios.get(url, { params, timeout: config.bitrix.timeout });
-  _tokens = {
-    accessToken:  response.data.access_token,
-    refreshToken: response.data.refresh_token,
-  };
-  saveTokensToFile();
-  logger.info('[bitrix] OAuth tokens obtained via code exchange');
-  return _tokens;
-}
-
-/**
- * Refresh the access token using the stored refresh token.
- */
-async function refreshAccessToken() {
-  logger.info('[bitrix] Refreshing access token…');
-  const url = `https://${config.bitrix.portalDomain}/oauth/token/`;
-  const params = {
-    grant_type:    'refresh_token',
-    client_id:     config.bitrix.clientId,
-    client_secret: config.bitrix.clientSecret,
-    refresh_token: _tokens.refreshToken,
-  };
-
-  const response = await axios.get(url, { params, timeout: config.bitrix.timeout });
-  _tokens = {
-    accessToken:  response.data.access_token,
-    refreshToken: response.data.refresh_token,
-  };
-  saveTokensToFile();
-  logger.info('[bitrix] Access token refreshed successfully');
-  return _tokens.accessToken;
-}
-
 // ─── REST API client ──────────────────────────────────────────────────────────
 
 /**
- * Call a Bitrix24 REST API method.
- * Automatically refreshes the access token on 401 / expired_token and retries.
+ * Call a Bitrix24 REST API method via incoming webhook URL.
  *
  * @param {string} method - e.g. 'crm.lead.update'
  * @param {object} params - Method parameters
@@ -117,42 +18,24 @@ async function refreshAccessToken() {
 async function callBitrix(method, params = {}) {
   return withRetry(
     async (attempt) => {
-      try {
-        const url  = `https://${config.bitrix.portalDomain}/rest/${method}`;
-        const body = { ...params, auth: _tokens.accessToken };
+      const url = `${config.bitrix.webhookUrl}${method}`;
 
-        logger.debug(`[bitrix] Calling ${method}`, { attempt });
+      logger.debug(`[bitrix] Calling ${method}`, { attempt });
 
-        const response = await axios.post(url, body, {
-          timeout: config.bitrix.timeout,
-          headers: { 'Content-Type': 'application/json' },
-        });
+      const response = await axios.post(url, params, {
+        timeout: config.bitrix.timeout,
+        headers: { 'Content-Type': 'application/json' },
+      });
 
-        if (response.data.error) {
-          const err = new Error(`Bitrix24 API error: ${response.data.error} — ${response.data.error_description}`);
-          err.bitrixError = response.data.error;
-          throw err;
-        }
-
-        return response.data.result;
-      } catch (err) {
-        // If token expired, refresh and retry
-        if (err.bitrixError === 'expired_token' || (err.response && err.response.status === 401)) {
-          logger.warn('[bitrix] Token expired, refreshing…');
-          await refreshAccessToken();
-          const retryErr = new Error('Token refreshed, retrying');
-          retryErr.code = 'TOKEN_REFRESHED';
-          throw retryErr;
-        }
-        throw err;
+      if (response.data.error) {
+        throw new Error(`Bitrix24 error: ${response.data.error} — ${response.data.error_description}`);
       }
+
+      return response.data.result;
     },
     {
       label: `bitrix.${method}`,
-      shouldRetry: (err) => {
-        if (err.code === 'TOKEN_REFRESHED') return true;
-        return isTransientError(err);
-      },
+      shouldRetry: (err) => isTransientError(err),
     }
   );
 }
@@ -262,9 +145,6 @@ function calculateDeadline(priority) {
 }
 
 module.exports = {
-  getAuthUrl,
-  exchangeCode,
-  refreshAccessToken,
   callBitrix,
   createTask,
   updateDeal,
