@@ -1,306 +1,318 @@
-# FLEX-N-ROLL PRO — Launch Guide
+# FLEX-N-ROLL PRO — Руководство по запуску
 
-## Project Overview
+## О проекте
 
-FLEX-N-ROLL PRO is a monorepo for a label/packaging printing company. It integrates with Bitrix24 CRM and provides AI-powered automation, order tracking, analytics, and regulatory compliance (Honest Sign marking system).
+FLEX-N-ROLL PRO — монорепозиторий для типографии, специализирующейся на этикетках. Интегрируется с Bitrix24 CRM и автоматизирует приём заявок, аналитику звонков, маркировку Честного ЗНАКа и управление заказами.
 
-### Services
+### Сервисы
 
-| Service | Directory | Description | Internal address | Stack |
-|---------|-----------|-------------|-----------------|-------|
-| **webhook** | `webhook/` | Bitrix24 webhook handler with LM Studio AI classification, SLA management | `fnr-webhook:3000` | Node 20, Express, Redis, OpenAI SDK |
-| **calculator** | `calculator/` | Label pricing calculator frontend (nginx SPA) | `fnr-calculator:80` | React 18, TypeScript, Vite, Tailwind |
-| **calculator-api** | `calculator/` | Calculator Express backend | `fnr-calculator-api:3001` | Node 20, Express |
-| **commanalysis** | `commanalysis/` | AI analysis of sales communications — transcription via Whisper, evaluation via GPT | `fnr-commanalysis:3000` | Node 18, Express, OpenAI, FFmpeg |
-| **fnr-status-bot** | `fnr-status-bot/` | Telegram bot for checking order status via Bitrix24 | — (long-polling) | Node 20, Telegraf |
-| **marking** | `marking/` | Integration with Russian "Honest Sign" (Честный ЗНАК) marking system | `fnr-marking:3000` | Node 18, Express, QRCode, XML |
-| **fnr-analytics** | `fnr-analytics/` | Analytics dashboard (static SPA, nginx) | `fnr-analytics:80` | React 19, Vite, Recharts, Tailwind |
-| **redis** | — | Cache, rate limiting, round-robin counters for webhook service | `fnr-redis:6379` | Redis 7.2 |
+| Контейнер | Описание | Внутренний адрес |
+|---|---|---|
+| `fnr-webhook` | Приём событий Bitrix24, AI-классификация (LM Studio), роутинг по менеджерам | `fnr-webhook:3000` |
+| `fnr-calculator` | Калькулятор стоимости этикеток (React SPA, nginx) | `fnr-calculator:80` |
+| `fnr-calculator-api` | Express API калькулятора, интеграция с Bitrix24 | `fnr-calculator-api:3001` |
+| `fnr-commanalysis` | AI-анализ звонков: транскрипция Whisper + оценка GPT | `fnr-commanalysis:3000` |
+| `fnr-commanalysis-scheduler` | Ежедневные сводные отчёты (cron) | — |
+| `fnr-status-bot` | Telegram-бот проверки статуса заказов | — (long-polling) |
+| `fnr-marking` | Интеграция с Честным ЗНАКом (ГИС МТ), генерация DataMatrix | `fnr-marking:3000` |
+| `fnr-analytics` | Дашборд аналитики (React SPA, nginx) | `fnr-analytics:80` |
+| `fnr-redis` | Кэш, rate limiting, round-robin счётчики менеджеров | `fnr-redis:6379` |
 
-> All services communicate over the `fnr-net` Docker bridge network using container names — no host port mapping. To access a service from the host machine, add a `ports:` entry to the relevant service in `docker-compose.yml`.
-
----
-
-## Prerequisites
-
-### Required Software
-
-- **Node.js** >= 20.0.0 (v20 LTS recommended; some services require >= 18, but fnr-status-bot and webhook require >= 20)
-- **npm** >= 9 (comes with Node 20)
-- **Docker** >= 24.0 and **Docker Compose** >= 2.20 (for containerized launch)
-- **Git**
-
-### Optional
-
-- **LM Studio** — local AI inference server (for webhook service; runs on `localhost:1234`)
-- **FFmpeg** — required for commanalysis service audio processing (installed automatically in Docker via `ffmpeg-static`)
+Все сервисы общаются через Docker-сеть `fnr-net` по именам контейнеров. Порты на хост не пробрасываются — для доступа извне нужен reverse proxy (nginx/Traefik).
 
 ---
 
-## Environment Variables
+## Предварительные требования
 
-Each service has a `.env.example` file. Before running, copy each to `.env` and fill in real values:
-
-```bash
-# From the repo root:
-cp calculator/.env.example calculator/.env
-cp commanalysis/.env.example commanalysis/.env
-cp fnr-status-bot/.env.example fnr-status-bot/.env
-cp marking/.env.example marking/.env
-cp webhook/.env.example webhook/.env
-```
-
-### Key variables to configure
-
-| Service | Variable | Description |
-|---------|----------|-------------|
-| **webhook** | `BITRIX_WEBHOOK_URL` | Bitrix24 incoming webhook URL (Settings → Integrations → Webhooks → Incoming webhook) |
-| **webhook** | `BITRIX_PORTAL_DOMAIN` | Your Bitrix24 portal domain, e.g. `mycompany.bitrix24.ru` (used to verify outgoing webhook origin) |
-| **webhook** | `OPENAI_BASE_URL` | LM Studio endpoint (default: `http://localhost:1234/v1`) |
-| **webhook** | `REDIS_URL` | Redis connection string (Docker: `redis://redis:6379`) |
-| **calculator** | `BITRIX24_WEBHOOK_URL` | Bitrix24 webhook for CRM data |
-| **commanalysis** | `OPENAI_API_KEY` | OpenAI API key for Whisper + GPT |
-| **commanalysis** | `BITRIX24_WEBHOOK_URL` | Bitrix24 webhook for call data |
-| **fnr-status-bot** | `BOT_TOKEN` | Telegram bot token from @BotFather |
-| **fnr-status-bot** | `BITRIX24_WEBHOOK_URL` | Bitrix24 webhook for order lookup |
-| **marking** | `MDLP_CLIENT_ID`, `MDLP_CLIENT_SECRET` | Honest Sign API credentials |
-| **marking** | `BITRIX_WEBHOOK_URL` | Bitrix24 webhook for marking integration |
+- **Docker** >= 24.0
+- **Docker Compose** >= 2.20
+- **LM Studio** запущен на хост-машине (для сервиса `webhook`)
+- Аккаунт Bitrix24 с правами администратора
+- Telegram Bot Token (от @BotFather)
+- OpenAI API ключ (для сервиса `commanalysis`)
+- Учётные данные ГИС МТ / Честный ЗНАК (для сервиса `marking`)
 
 ---
 
-## Launch: Docker (Recommended)
+## Быстрый старт
 
-### 1. Clone and configure
+### 1. Клонировать репозиторий
 
 ```bash
 git clone https://github.com/Dm1tryAndreev1ch/flex-n-roll-pro.git
 cd flex-n-roll-pro
 ```
 
-### 2. Create `.env` files
-
-Copy all `.env.example` files to `.env` and fill in secrets (see above).
-
-You can also create a single root `.env` file for shared variables used by the unified `docker-compose.yml`:
+### 2. Создать `.env`
 
 ```bash
-cp webhook/.env.example .env
-# Then add variables from other services as needed
+cp .env.example .env
 ```
 
-### 3. Build and start all services
+Открыть `.env` и заполнить все обязательные переменные (см. раздел «Настройка .env»).
 
-Place `docker-compose.yml` from this repo in the project root, then:
+### 3. Запустить
 
 ```bash
 docker compose up --build -d
 ```
 
-### 4. Verify
+### 4. Проверить статус
 
 ```bash
-# Check all containers are running
+# Все контейнеры должны быть healthy / running
 docker compose ps
 
-# Check webhook health (from inside the network)
-docker exec fnr-webhook curl -f http://localhost:3000/health
+# Проверить webhook
+docker exec fnr-webhook curl -s http://localhost:3000/health
 
-# Check calculator frontend (from inside the network)
-docker exec fnr-calculator curl -s http://localhost:80 | head -5
-
-# View logs
+# Логи конкретного сервиса
 docker compose logs -f webhook
 docker compose logs -f commanalysis
 ```
 
-> No ports are bound to the host by default. Services are only reachable inside `fnr-net` by container name. To expose one externally, add `ports: ["HOST:CONTAINER"]` to that service.
-
-### 5. Stop
+### 5. Остановить
 
 ```bash
 docker compose down
 
-# To also remove volumes (Redis data, etc.):
+# С удалением данных (Redis, логи, файлы маркировки):
 docker compose down -v
 ```
 
 ---
 
-## Launch: Local / Manual
+## Настройка .env
 
-### 1. Install all dependencies
+Единый файл `.env` в корне репозитория читается всеми сервисами.
 
-```bash
-# From repo root (uses npm workspaces — note: fnr-analytics not in workspaces)
-npm install
+### Обязательные переменные
 
-# Install fnr-analytics separately
-cd fnr-analytics && npm install && cd ..
+#### Bitrix24
+
+Создать **входящий вебхук** в Bitrix24:  
+`Настройки → Интеграции → Вебхуки → Входящий вебхук`  
+Права: **CRM + Задачи + IM + Телефония**
+
+```env
+BITRIX_WEBHOOK_URL=https://your-portal.bitrix24.ru/rest/1/your-token/
+BITRIX_PORTAL_DOMAIN=your-portal.bitrix24.ru
 ```
 
-### 2. Start Redis
+Создать **исходящий вебхук** для получения событий:  
+`Настройки → Интеграции → Вебхуки → Исходящий вебхук`  
+- URL обработчика: `http://your-server:3000/webhook`  
+- События: `OnCrmLeadAdd`, `OnImConnectorMessageAdd`
+
+#### Telegram Bot
+
+```env
+BOT_TOKEN=токен_от_BotFather
+MANAGER_CONTACT=@ваш_менеджер
+MANAGER_PHONE=+375XXXXXXXXX
+```
+
+#### LM Studio (классификация обращений)
+
+LM Studio должен быть запущен на хост-машине. В Docker используется `host.docker.internal`:
+
+```env
+OPENAI_API_KEY=lm-studio
+OPENAI_BASE_URL=http://host.docker.internal:1234/v1
+OPENAI_MODEL=local-model
+```
+
+#### OpenAI (анализ звонков)
+
+```env
+COMMANALYSIS_OPENAI_API_KEY=sk-...
+GPT_MODEL=gpt-4o
+WHISPER_MODEL=whisper-1
+```
+
+#### Менеджеры Bitrix24
+
+ID пользователей из CRM. Используются для round-robin роутинга:
+
+```env
+MANAGER_IDS_SALES=1,2,3
+MANAGER_IDS_TECH=4
+MANAGER_IDS_QUALITY=5
+MANAGER_IDS_MARKING=6
+```
+
+#### Честный ЗНАК / ГИС МТ
+
+```env
+MDLP_CLIENT_ID=your_client_id
+MDLP_CLIENT_SECRET=your_client_secret
+MDLP_PARTICIPANT_INN=your_inn
+MDLP_DEFAULT_GTIN=your_gtin
+```
+
+#### Стадии воронки CRM
+
+Узнать ID стадий: `CRM → Настройки → Воронки и туннели продаж`
+
+```env
+BITRIX_STAGE_PRODUCTION=C3:NEW
+BITRIX_STAGE_SHIPMENT=C3:WON
+BITRIX_STAGE_MARKING_DONE=C3:PREPARATION
+BITRIX_OPERATOR_USER_ID=1
+```
+
+#### Отчёты commanalysis
+
+```env
+REPORT_MANAGER_USER_ID=1        # ID руководителя в Bitrix24
+REPORT_EMAIL=director@example.by
+```
+
+### Необязательные переменные
+
+```env
+# SLA дедлайны (часы, по умолчанию: 1/4/8/24/48)
+SLA_P1_HOURS=1
+SLA_P2_HOURS=4
+SLA_P3_HOURS=8
+SLA_P4_HOURS=24
+SLA_P5_HOURS=48
+
+# Rate limiting webhook (запросов в минуту)
+RATE_LIMIT_MAX=60
+
+# Секрет для верификации вебхуков marking (если нужна доп. защита)
+WEBHOOK_SECRET=
+
+# Только для локальной разработки — отключает верификацию домена Bitrix24
+# SKIP_VERIFY=true
+```
+
+---
+
+## Настройка Bitrix24
+
+### Входящий вебхук (наш сервер → Bitrix24)
+
+| Поле | Значение |
+|---|---|
+| Расположение | Настройки → Интеграции → Вебхуки → Входящий вебхук |
+| Права | CRM, Задачи, IM, Телефония |
+| Переменная | `BITRIX_WEBHOOK_URL` |
+
+Один URL используется всеми сервисами (webhook, calculator, commanalysis, fnr-status-bot, marking).
+
+### Исходящий вебхук (Bitrix24 → наш сервер)
+
+| Поле | Значение |
+|---|---|
+| Расположение | Настройки → Интеграции → Вебхуки → Исходящий вебхук |
+| URL обработчика | `https://your-server/webhook` |
+| События | `OnCrmLeadAdd`, `OnImConnectorMessageAdd` |
+
+Верификация: сервис проверяет `auth.domain` в теле запроса против `BITRIX_PORTAL_DOMAIN`.
+
+---
+
+## Локальный запуск (без Docker)
+
+Для разработки отдельных сервисов:
+
+### 1. Запустить Redis
 
 ```bash
-# Via Docker (simplest)
 docker run -d --name fnr-redis -p 6379:6379 redis:7.2-alpine redis-server --appendonly yes
-
-# Or install Redis locally
 ```
 
-### 3. Start each service
+### 2. Скопировать env в каждый сервис
 
-Open separate terminals for each:
+Все сервисы читают из корневого `.env` при запуске через Docker. При локальном запуске — переменные нужно экспортировать или создать `.env` в директории сервиса:
 
 ```bash
-# Terminal 1 — Webhook handler
-cd webhook
-cp .env.example .env  # edit with real values
-npm run dev
+# Быстрый способ — экспортировать из корневого .env
+export $(grep -v '^#' .env | xargs)
+```
 
-# Terminal 2 — Calculator (frontend + backend)
-cd calculator
-cp .env.example .env
-npm start            # starts both Vite dev server and Express backend
+### 3. Запустить сервисы
 
-# Terminal 3 — CommAnalysis
-cd commanalysis
-cp .env.example .env
-npm run dev
+```bash
+# Terminal 1 — Webhook
+cd webhook && npm install && REDIS_URL=redis://localhost:6379 npm run dev
 
-# Terminal 4 — Telegram Bot
-cd fnr-status-bot
-cp .env.example .env
-npm start
+# Terminal 2 — Calculator API
+cd calculator && npm install && npm run server
 
-# Terminal 5 — Marking
-cd marking
-cp .env.example .env
-npm run dev
+# Terminal 3 — Calculator Frontend
+cd calculator && npm run dev
 
-# Terminal 6 — Analytics Dashboard
-cd fnr-analytics
-npm run dev
+# Terminal 4 — CommAnalysis
+cd commanalysis && npm install && npm run dev
+
+# Terminal 5 — Telegram Bot
+cd fnr-status-bot && npm install && npm start
+
+# Terminal 6 — Marking
+cd marking && npm install && npm run dev
+
+# Terminal 7 — Analytics
+cd fnr-analytics && npm install && npm run dev
+
+# Terminal 8 — CommAnalysis Scheduler (опционально)
+cd commanalysis && node scheduler/dailyBatch.js
 ```
 
 ---
 
-## Per-Service Details
+## Известные проблемы
 
-### webhook (port 3000)
+### npm install из корня монорепо
 
-- Requires Redis to be running
-- Requires LM Studio running on port 1234 (or configure `OPENAI_BASE_URL`)
-- Has a `/health` endpoint for monitoring
-- Logs to `./logs/`
+Корневой `package.json` использует npm workspaces. `fnr-analytics` не в workspaces — устанавливать отдельно:
 
-#### Bitrix24 webhook setup
-
-This service uses two Bitrix24 webhook types:
-
-1. **Outgoing webhook** (исходящий вебхук) — Bitrix24 POSTs event data to our server.
-   - Create in Bitrix24: Settings → Integrations → Webhooks → Outgoing webhook.
-   - Set handler URL to `http://your-server:3000/webhook`.
-   - Subscribe to events: `OnCrmLeadAdd`, `OnImConnectorMessageAdd`.
-   - No secret token needed — verification is by portal domain (`auth[domain]` in request body must match `BITRIX_PORTAL_DOMAIN`).
-
-2. **Incoming webhook** (входящий вебхук) — We call Bitrix24 REST API.
-   - Create in Bitrix24: Settings → Integrations → Webhooks → Incoming webhook.
-   - Required permissions: CRM, Tasks, IM.
-   - Set `BITRIX_WEBHOOK_URL` to the generated URL (e.g. `https://mycompany.bitrix24.ru/rest/1/TOKEN/`).
-
-3. Set `BITRIX_PORTAL_DOMAIN` to your portal domain (e.g. `mycompany.bitrix24.ru`).
-
-### calculator (port 5173 dev / 8080 prod)
-
-- Frontend: Vite React app on port 5173 (dev) or served by nginx on port 80 (Docker)
-- Backend: Express API on port 3001
-- `npm start` runs both concurrently
-- Frontend proxies `/api` requests to the backend
-
-### commanalysis (port 3001 mapped from 3000)
-
-- Requires OpenAI API key (Whisper for transcription, GPT for analysis)
-- Has a scheduler (`npm run scheduler`) for daily batch processing
-- Temp audio files stored in `TMP_DIR` (default `/tmp/commanalysis`)
-
-### fnr-status-bot (no exposed port)
-
-- Long-polling Telegram bot — no HTTP port needed
-- Requires `BOT_TOKEN` from @BotFather
-- Depends on webhook service for Bitrix24 data
-
-### marking (port 3002 mapped from 3000)
-
-- Integrates with Honest Sign (Честный ЗНАК / ГИС МТ) API
-- Stores marking codes in `DATA_DIR` (JSON file-based DB)
-- Has a scheduler for periodic marking status checks
-
-### fnr-analytics (port 8081 prod / 5174 dev)
-
-- Static SPA — no backend required
-- Uses `vite-plugin-singlefile` to bundle everything into one HTML file
-- Built output can be served by any static server (nginx)
-
----
-
-## Known Issues and Broken References
-
-### Critical
-
-1. **`bot` workspace is missing**: `package.json` lists `"bot"` in workspaces, but the actual directory is `fnr-status-bot`. This causes `npm install` at root to fail.
-2. **docker-compose.yml references `./bot`**: The root `docker-compose.yml` references `build: ./bot` but the directory is `fnr-status-bot`.
-3. **docker-compose.yml references `./flex-n-roll-analytics`**: The analytics service references `build: ./flex-n-roll-analytics` but the directory is `fnr-analytics`.
-
-### Missing Files
-
-4. **fnr-status-bot/Dockerfile** — does not exist; needed for Docker deployment.
-5. **fnr-analytics/Dockerfile** — does not exist; needed for Docker deployment.
-6. **fnr-analytics/.env.example** — not present (may not be needed since it's a static SPA).
-
-### Minor
-
-7. **fnr-analytics not in workspaces**: `fnr-analytics` is not listed in the root `package.json` workspaces array.
-8. **Inconsistent Node versions**: webhook and fnr-status-bot require Node >= 20, others require >= 18. The Dockerfiles for commanalysis and marking use `node:18-alpine`.
-9. **Redis version mismatch**: Root docker-compose uses `redis:alpine` (latest), while webhook's standalone compose uses `redis:7.2-alpine` (pinned).
-10. **`marking/.env.example`** has hardcoded absolute paths (`/home/user/workspace/flex-n-roll-marking/data`) — should use relative paths or Docker volume mounts.
-
----
-
-## Troubleshooting
-
-### `npm install` fails at root level
-
-The root `package.json` references a `"bot"` workspace that doesn't exist (it's `fnr-status-bot`). Fix by editing `package.json`:
-```json
-"workspaces": ["fnr-status-bot", "webhook", "calculator", "commanalysis", "marking"]
+```bash
+npm install          # устанавливает webhook, calculator, commanalysis, fnr-status-bot, marking
+cd fnr-analytics && npm install
 ```
 
-### Docker build fails for bot/analytics
+### LM Studio не доступен из Docker
 
-The original `docker-compose.yml` references `./bot` and `./flex-n-roll-analytics`. Use the unified `docker-compose.yml` provided separately which uses the correct directory names and includes Dockerfiles for all services.
+В docker-compose используется `host.docker.internal:1234`. На Linux это может не работать — добавьте:
 
-### Webhook can't connect to Redis
+```bash
+# В docker-compose.yml для сервиса webhook:
+extra_hosts:
+  - "host.docker.internal:host-gateway"
+```
 
-- In Docker: use `redis://redis:6379` (service name, not localhost)
-- Locally: ensure Redis is running on port 6379
+### Marking: директория данных
 
-### Calculator API proxy not working
+При локальном запуске создать вручную:
 
-- In development, Vite proxies `/api` to `http://localhost:3001`
-- Ensure the calculator backend is running (`npm run server`)
+```bash
+mkdir -p marking/data/production/orders
+```
 
-### CommAnalysis FFmpeg errors
+В Docker директория создаётся автоматически через volume `marking-data`.
 
-- Locally: install FFmpeg (`apt install ffmpeg` or `brew install ffmpeg`). The `ffmpeg-static` npm package may also work.
-- In Docker: `ffmpeg-static` is included in node_modules
+### Redis в webhook недоступен локально
 
-### Telegram bot not responding
+Убедиться что `REDIS_URL=redis://localhost:6379` (не `redis://redis:6379` — это Docker-адрес).
 
-- Check `BOT_TOKEN` is valid
-- Ensure the bot has been started with `/start` in Telegram
-- Check `BITRIX24_WEBHOOK_URL` is accessible
+---
 
-### Marking service: "ENOENT data directory"
+## Обслуживание
 
-- Create the data directory: `mkdir -p marking/data/production/orders`
-- Or set `DATA_DIR` to a relative path in `.env`
+```bash
+# Пересобрать и перезапустить один сервис
+docker compose up --build -d webhook
+
+# Просмотр логов всех сервисов
+docker compose logs -f
+
+# Очистить неиспользуемые образы
+docker image prune -f
+
+# Бэкап данных маркировки
+docker run --rm -v flex-n-roll-pro_marking-data:/data -v $(pwd):/backup \
+  alpine tar czf /backup/marking-backup-$(date +%Y%m%d).tar.gz /data
+```
