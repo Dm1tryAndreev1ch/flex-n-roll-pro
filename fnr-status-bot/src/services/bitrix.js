@@ -201,7 +201,11 @@ async function getStageName(stageId) {
   if (!stageId) return 'Неизвестен';
 
   try {
+    // stageId format: "C3:NEW" → categoryId = 3
+    const match = stageId.match(/^C(\d+):/);
+    const categoryId = match ? parseInt(match[1], 10) : 0;
     const response = await bitrixClient.post('crm.dealcategory.stage.list', {
+      id: categoryId,
       filter: { STATUS_ID: stageId },
     });
     const stage = response.data?.result?.[0];

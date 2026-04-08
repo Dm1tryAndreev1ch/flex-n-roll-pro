@@ -55,26 +55,21 @@ router.post('/b24', async (req, res) => {
     body?.['data[FIELDS][ID]'] ||
     body?.FIELDS?.ID ||
     '';
-  const stageId =
-    body?.data?.FIELDS?.STAGE_ID ||
-    body?.['data[FIELDS][STAGE_ID]'] ||
-    body?.FIELDS?.STAGE_ID ||
-    '';
 
-  logger.info(`[webhook] Событие: ${event}, dealId: ${dealId}, stageId: ${stageId}`);
+  logger.info(`[webhook] Событие: ${event}, dealId: ${dealId}`);
 
   if (!event || !dealId) {
-    return res.status(200).json({ success: true, message: 'Нет данных для обработки' });
+    return res.status(200).send('ok');
   }
 
   // Б24 ожидает ответ в течение ~3 секунд, поэтому отвечаем немедленно,
   // а обработку запускаем асинхронно.
-  res.status(200).json({ success: true, message: 'Принято в обработку' });
+  res.status(200).send('ok');
 
   // Асинхронная обработка
   setImmediate(async () => {
     try {
-      await handleDealUpdate(dealId, stageId, event);
+      await handleDealUpdate(dealId, event);
     } catch (err) {
       logger.error(`[webhook] Ошибка обработки события ${event} для сделки ${dealId}: ${err.message}`);
     }
@@ -84,8 +79,18 @@ router.post('/b24', async (req, res) => {
 // ---------------------------------------------------------------------------
 // Основная логика обработки события обновления сделки
 // ---------------------------------------------------------------------------
-async function handleDealUpdate(dealId, stageId, event) {
+async function handleDealUpdate(dealId, event) {
   const { production, shipment } = config.bitrix.stages;
+
+  // STAGE_ID is not included in OnCrmDealUpdate payload — fetch from API
+  let stageId;
+  try {
+    const deal = await bitrix.getDeal(dealId);
+    stageId = deal?.STAGE_ID;
+  } catch (err) {
+    logger.error('[webhook:dealUpdate] Failed to fetch deal stage', { dealId, error: err.message });
+    return;
+  }
 
   // --- Случай 1: Переход на стадию «Производство» ---
   if (stageId === production) {

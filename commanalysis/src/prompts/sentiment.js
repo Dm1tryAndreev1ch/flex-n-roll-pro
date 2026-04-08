@@ -41,8 +41,3 @@ const SENTIMENT_PROMPT = `
 `.trim();
 
 module.exports = { SENTIMENT_PROMPT };
-
-
-// ═══════════════════════════════════════════════════════════════════════════
-
-module.exports = { SENTIMENT_PROMPT };

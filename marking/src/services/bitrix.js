@@ -30,7 +30,7 @@ const logger = require('../utils/logger');
  * @returns {Promise<any>} — содержимое поля result
  */
 async function callBitrix(method, params = {}) {
-  const url = `${config.bitrix.webhookUrl}/${method}`;
+  const url = `${config.bitrix.webhookUrl.replace(/\/?$/, '/')}${method}`;
 
   try {
     const resp = await axios.post(url, params, { timeout: 15000 });

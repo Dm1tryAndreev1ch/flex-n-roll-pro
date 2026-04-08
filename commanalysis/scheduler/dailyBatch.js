@@ -245,6 +245,13 @@ async function runDailyBatch(targetDate) {
   const dateFrom = date.startOf('day').toISOString();
   const dateTo   = date.endOf('day').toISOString();
 
+  // Previous month calculation (correct year rollover in January)
+  const now = new Date();
+  const month = now.getMonth() + 1; // 1-12
+  const year = now.getFullYear();
+  const reportMonth = month > 1 ? month - 1 : 12;
+  const reportYear = month === 1 ? year - 1 : year;
+
   logger.info(`[batch] ==========================================`);
   logger.info(`[batch] Запуск batch-обработки за ${dateStr}`);
   logger.info(`[batch] ==========================================`);

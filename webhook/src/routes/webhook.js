@@ -11,6 +11,7 @@ const {
   createTask,
   sendMessage,
   calculateDeadline,
+  getLead,
 } = require('../services/bitrix');
 const {
   getNextManager,
@@ -88,17 +89,24 @@ async function handleCrmLeadAdd(body) {
 
   logger.info('[webhook:crmLeadAdd] Processing new lead', { leadId });
 
-  // OnCrmLeadAdd only sends the lead ID — full fields require a REST API call.
-  // For now we pass what we have; the pipeline classifies based on available data.
+  // Fetch full lead data from Bitrix24 (outgoing webhook only sends ID)
+  let leadFields = fields;
+  try {
+    const leadData = await getLead(leadId);
+    if (leadData) leadFields = leadData;
+  } catch (err) {
+    logger.warn('[webhook:crmLeadAdd] Could not fetch lead details, using payload fields', { leadId, error: err.message });
+  }
+
   const message = [
-    fields.COMMENTS,
-    fields.TITLE,
-    fields.SOURCE_DESCRIPTION,
+    leadFields.COMMENTS,
+    leadFields.TITLE,
+    leadFields.SOURCE_DESCRIPTION,
   ].filter(Boolean).join('\n\n') || '(нет описания)';
 
-  const contactName  = [fields.NAME, fields.SECOND_NAME, fields.LAST_NAME].filter(Boolean).join(' ') || null;
-  const contactPhone = (fields.PHONE && fields.PHONE[0]?.VALUE) || null;
-  const contactEmail = (fields.EMAIL && fields.EMAIL[0]?.VALUE) || null;
+  const contactName  = [leadFields.NAME, leadFields.SECOND_NAME, leadFields.LAST_NAME].filter(Boolean).join(' ') || null;
+  const contactPhone = (leadFields.PHONE && leadFields.PHONE[0]?.VALUE) || null;
+  const contactEmail = (leadFields.EMAIL && leadFields.EMAIL[0]?.VALUE) || null;
 
   await processLeadClassification({
     leadId,

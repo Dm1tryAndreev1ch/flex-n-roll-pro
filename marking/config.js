@@ -62,7 +62,13 @@ const config = {
   },
 
   security: {
-    webhookSecret: process.env.WEBHOOK_SECRET || '',
+    webhookSecret: (() => {
+      const secret = process.env.WEBHOOK_SECRET || '';
+      if (!secret && process.env.NODE_ENV === 'production') {
+        console.warn('[marking] WARNING: WEBHOOK_SECRET is not set — webhook endpoint is unprotected');
+      }
+      return secret;
+    })(),
   },
 
   /**

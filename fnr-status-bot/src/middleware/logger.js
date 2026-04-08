@@ -1,5 +1,9 @@
 const winston = require('winston');
+const fs = require('fs');
+const path = require('path');
 const config = require('../../config/config');
+
+fs.mkdirSync(path.join(process.cwd(), 'logs'), { recursive: true });
 
 // Формат логов
 const logFormat = winston.format.combine(

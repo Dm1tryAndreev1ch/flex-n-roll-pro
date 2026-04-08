@@ -1,3 +1,5 @@
+# Standalone docker-compose для локальной разработки webhook-сервиса.
+# Для production используйте корневой docker-compose.yml.
 version: "3.9"
 
 services:

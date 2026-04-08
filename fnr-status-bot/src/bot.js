@@ -15,8 +15,8 @@ const bot = new Telegraf(config.bot.token);
 const stage = new Scenes.Stage([checkOrderScene]);
 
 // Middleware
-bot.use(loggerMiddleware);       // Логирование всех взаимодействий
 bot.use(session());              // Сессии (Map-based по умолчанию)
+bot.use(loggerMiddleware);       // Логирование всех взаимодействий
 bot.use(stage.middleware());     // Сцены
 
 // ═══════════════════════════════════════════

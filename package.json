@@ -4,11 +4,12 @@
   "description": "FLEX-N-ROLL PRO Monorepo",
   "private": true,
   "workspaces": [
-    "bot",
+    "fnr-status-bot",
     "webhook",
     "calculator",
     "commanalysis",
-    "marking"
+    "marking",
+    "fnr-analytics"
   ],
   "scripts": {
     "start": "npm run start --workspaces --if-present",

@@ -228,6 +228,14 @@ app.post('/api/chats/analyze', async (req, res) => {
  *   - ONVOXIMPLANTCALLEND → немедленно транскрибировать
  */
 app.post('/api/webhook/bitrix', async (req, res) => {
+  // Verify Bitrix24 portal domain
+  const auth = req.body?.auth || {};
+  const domain = auth.domain || auth.DOMAIN;
+  if (process.env.NODE_ENV === 'production' && domain !== process.env.BITRIX_PORTAL_DOMAIN) {
+    logger.warn('[webhook] Domain mismatch or missing', { domain });
+    return res.status(401).send('Unauthorized');
+  }
+
   // Сразу ответить Б24, дальше обрабатывать асинхронно
   res.sendStatus(200);
 

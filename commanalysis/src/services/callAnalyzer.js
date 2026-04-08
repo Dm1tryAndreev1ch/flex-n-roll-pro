@@ -187,18 +187,25 @@ async function analyzeCall({ transcript, dealId, callInfo = {} }) {
 
   logger.info(`[callAnalyzer] Запуск полного анализа dealId=${dealId}, ${text.length} симв.`);
 
-  // Запустить все три анализа параллельно
-  const [scriptResult, sentimentResult, extractedData] = await Promise.all([
+  // Запустить все три анализа параллельно (graceful degradation)
+  const results = await Promise.allSettled([
     checkSalesScript(text),
     analyzeSentiment(text),
     extractKeyData(text),
   ]);
+  const [scriptResult, sentimentResult, extractedData] = results.map(r =>
+    r.status === 'fulfilled' ? r.value : null
+  );
+
+  if (!scriptResult) logger.warn('[callAnalyzer] scriptCheck failed, using null');
+  if (!sentimentResult) logger.warn('[callAnalyzer] sentiment failed, using null');
+  if (!extractedData) logger.warn('[callAnalyzer] dataExtract failed, using null');
 
   // Итоговый балл: взвешенная сумма
   const overall_score = scorer.computeOverallScore({
-    script_score:    scriptResult.script_score,
-    sentiment:       sentimentResult,
-    extractedData,
+    script_score:    scriptResult?.script_score ?? 0,
+    sentiment:       sentimentResult || {},
+    extractedData:   extractedData || {},
   });
 
   // Автозаполнение полей сделки в Б24
@@ -221,9 +228,9 @@ async function analyzeCall({ transcript, dealId, callInfo = {} }) {
   const result = {
     dealId,
     overall_score,
-    script:        scriptResult,
-    sentiment:     sentimentResult,
-    extracted:     extractedData,
+    script:        scriptResult || {},
+    sentiment:     sentimentResult || {},
+    extracted:     extractedData || {},
     analyzed_at:   new Date().toISOString(),
     transcript_len: text.length,
   };
