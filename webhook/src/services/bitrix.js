@@ -203,20 +203,12 @@ function calculateDeadline(priority) {
  * @param {string} comment - Comment text (HTML supported)
  */
 async function addTimelineComment(entityType, entityId, comment) {
-  const ownerTypeMap = {
-    lead: 'CRM_LEAD',
-    deal: 'CRM_DEAL',
-    contact: 'CRM_CONTACT',
-    company: 'CRM_COMPANY',
-  };
-
-  const ownerType = ownerTypeMap[entityType] || 'CRM_LEAD';
   logger.info('[bitrix] Adding timeline comment', { entityType, entityId });
 
   return callBitrix('crm.timeline.comment.add', {
     fields: {
       ENTITY_ID:   entityId,
-      ENTITY_TYPE: ownerType,
+      ENTITY_TYPE: entityType,
       COMMENT:     comment,
     },
   });

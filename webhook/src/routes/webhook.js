@@ -551,6 +551,12 @@ function buildCrmFields(entityType, classification, managerId) {
   // Set status depending on entity type
   if (entityType === 'lead') {
     fields.STATUS_ID = 'IN_PROCESS';
+  } else if (entityType === 'deal') {
+    // При успешной классификации перекинуть сделку на подготовку документов
+    const isError = classification.extracted_data?.notes?.includes('[Ошибка AI:') || false;
+    if (!isError) {
+      fields.STAGE_ID = 'PREPARATION';
+    }
   }
 
   // Extracted data → custom fields
