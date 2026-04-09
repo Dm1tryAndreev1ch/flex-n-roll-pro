@@ -15,7 +15,7 @@ const router  = express.Router();
 const logger = require('../utils/logger');
 const oauth  = require('../services/oauth');
 const { bindAllEvents } = require('../services/eventBinder');
-const { getPublicUrl }  = require('../services/ngrok');
+const config = require('../../config/config');
 
 /**
  * GET /install
@@ -57,7 +57,7 @@ router.get('/callback', async (req, res) => {
     });
 
     // Automatically bind events after successful installation
-    const publicUrl = getPublicUrl();
+    const publicUrl = config.appUrl;
     if (publicUrl) {
       try {
         await bindAllEvents(publicUrl);
@@ -71,7 +71,7 @@ router.get('/callback', async (req, res) => {
       message: 'Приложение установлено! Токены сохранены в Redis.',
       domain:  tokenData.domain,
       events_bound: !!publicUrl,
-      ngrok_url: publicUrl || 'ngrok not running — events not bound',
+      app_url: publicUrl || 'PUBLIC_APP_URL not set — events not bound',
     });
   } catch (err) {
     logger.error('[install] OAuth callback failed', { error: err.message });
@@ -89,11 +89,11 @@ router.get('/callback', async (req, res) => {
 router.get('/status', async (_req, res) => {
   try {
     const status    = await oauth.getStatus();
-    const publicUrl = getPublicUrl();
+    const publicUrl = config.appUrl;
 
     res.json({
       oauth:     status,
-      ngrok:     publicUrl || null,
+      appUrl:    publicUrl || null,
       ready:     status.installed && !!publicUrl,
     });
   } catch (err) {

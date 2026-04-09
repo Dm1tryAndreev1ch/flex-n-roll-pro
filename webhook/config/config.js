@@ -53,11 +53,7 @@ const config = {
     appToken:       optional('BITRIX_APP_TOKEN', ''),
   },
 
-  ngrok: {
-    authToken: optional('NGROK_AUTHTOKEN', ''),
-    // Optional: fixed domain (paid ngrok plans only)
-    domain:    optional('NGROK_DOMAIN', ''),
-  },
+  appUrl: optional('PUBLIC_APP_URL', ''),
 
   redis: {
     url: optional('REDIS_URL', 'redis://localhost:6379'),

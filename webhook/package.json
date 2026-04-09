@@ -15,7 +15,6 @@
     "lint:fix": "eslint src/ config/ --ext .js --fix"
   },
   "dependencies": {
-    "@ngrok/ngrok": "^1.4.1",
     "axios": "^1.7.2",
     "dotenv": "^16.4.5",
     "express": "^4.21.1",
