@@ -101,7 +101,55 @@ async function _incrementCounter(pool) {
   return _fileCounters[key];
 }
 
-// ─── Public API ───────────────────────────────────────────────────────────────
+let _managerCache  = null;
+let _lastCacheTime = 0;
+const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+async function _refreshManagerCache() {
+  const now = Date.now();
+  if (_managerCache && (now - _lastCacheTime < CACHE_TTL_MS)) {
+    return _managerCache;
+  }
+
+  const bitrix = require('./bitrix');
+  try {
+    const users = await bitrix.getUsers();
+    const newCache = { sales: [], tech: [], quality: [], marking: [] };
+
+    for (const user of users) {
+      // Skip inactive users just in case filter fails
+      if (user.ACTIVE && user.ACTIVE !== 'Y' && user.ACTIVE !== true) continue;
+
+      const position = (user.WORK_POSITION || '').toLowerCase();
+      const id = Number(user.ID);
+      if (!position || isNaN(id)) continue;
+      
+      logger.info(`[routing] Found active user`, { id, name: user.NAME, position });
+
+      if (config.pools.sales.some(k => position.includes(k)))   newCache.sales.push(id);
+      else if (config.pools.tech.some(k => position.includes(k)))    newCache.tech.push(id);
+      else if (config.pools.quality.some(k => position.includes(k))) newCache.quality.push(id);
+      else if (config.pools.marking.some(k => position.includes(k))) newCache.marking.push(id);
+    }
+
+    _managerCache = newCache;
+    _lastCacheTime = now;
+    logger.info('[routing] Refreshed active workers cache', { 
+      totalActive: users.length, 
+      matched: { 
+        sales: newCache.sales.length, tech: newCache.tech.length, 
+        quality: newCache.quality.length, marking: newCache.marking.length 
+      }
+    });
+  } catch (err) {
+    logger.error('[routing] Failed to fetch users from Bitrix24', { error: err.message });
+    if (!_managerCache) {
+      _managerCache = { sales: [], tech: [], quality: [], marking: [] };
+    }
+  }
+
+  return _managerCache;
+}
 
 /**
  * Select the next manager for a given pool using round-robin.
@@ -111,11 +159,24 @@ async function _incrementCounter(pool) {
  */
 async function getNextManager(pool) {
   const normalised = ROUTE_MAP[pool] || DEFAULT_POOL;
-  const managers   = config.managers[normalised];
+  const cache = await _refreshManagerCache();
+  
+  let managers = cache[normalised];
 
+  // Try DEFAULT_POOL if specific pool is empty
+  if ((!managers || managers.length === 0) && normalised !== DEFAULT_POOL) {
+    logger.warn(`[routing] No workers found for pool ${normalised}, falling back to ${DEFAULT_POOL}`);
+    managers = cache[DEFAULT_POOL];
+  }
+
+  // Fallback to absolute default IDs if no one is found anywhere
   if (!managers || managers.length === 0) {
-    logger.warn('[routing] No managers configured for pool, using default', { pool: normalised });
-    return config.managers[DEFAULT_POOL][0];
+    managers = config.pools.fallbackIds;
+    logger.warn('[routing] No matching workers found at all, using fallback IDs', { ids: managers });
+  }
+  
+  if (!managers || managers.length === 0) {
+    managers = [1]; // Hard failure fallback
   }
 
   if (managers.length === 1) {
@@ -168,7 +229,7 @@ function resolvePool(classification) {
 /**
  * Build a human-readable task title based on classification.
  */
-function buildTaskTitle(classification, leadId) {
+function buildTaskTitle(classification, entityId, entityType = 'lead') {
   const intentLabels = {
     quote_request:    'Запрос КП',
     order_placement:  'Новый заказ',
@@ -197,17 +258,19 @@ function buildTaskTitle(classification, leadId) {
   const intentLabel   = intentLabels[classification.intent]        || classification.intent;
   const productLabel  = productLabels[classification.product_type]  || classification.product_type;
   const priorityLabel = classification.priority === 1 ? ' [HOT]' : '';
+  const prefix        = entityType === 'deal' ? 'Сделка' : 'Лид';
 
-  return `[Лид #${leadId}]${priorityLabel} ${intentLabel} — ${productLabel}`;
+  return `[${prefix} #${entityId}]${priorityLabel} ${intentLabel} — ${productLabel}`;
 }
 
 /**
  * Build the task description from the classification and extracted data.
  */
-function buildTaskDescription(classification, leadId) {
+function buildTaskDescription(classification, entityId, entityType = 'lead') {
   const { extracted_data: d } = classification;
+  const prefix = entityType === 'deal' ? 'Сделка' : 'Лид';
   const lines = [
-    `Лид: #${leadId}`,
+    `${prefix}: #${entityId}`,
     `Намерение: ${classification.intent}`,
     `Продукт: ${classification.product_type}`,
     `Срочность: ${classification.urgency}`,

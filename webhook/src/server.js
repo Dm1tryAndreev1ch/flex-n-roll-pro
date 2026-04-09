@@ -16,6 +16,7 @@ const eventsRouter            = require('./routes/events');
 // ─── ngrok & event binding ────────────────────────────────────────────────────
 const { startTunnel, stopTunnel } = require('./services/ngrok');
 const { bindAllEvents }           = require('./services/eventBinder');
+const { provisionAllFields }      = require('./services/fieldProvisioner');
 
 const app = express();
 
@@ -69,6 +70,12 @@ app.use(
 
 // ─── Serve Analytics UI inside Bitrix24 iframe ────────────────────────────────
 app.all('/', async (req, res) => {
+  // Bulletproof against Bitrix24 config mistake where Redirect URI is set to '/'
+  if (req.method === 'GET' && req.query.code) {
+    logger.info('[server] Caught OAuth code on root / URL, redirecting to /install/callback');
+    return res.redirect(`/install/callback?code=${req.query.code}&domain=${req.query.domain || ''}`);
+  }
+
   try {
     const axios = require('axios');
     // Fetch the single-file compiled React app from the analytics container
@@ -120,6 +127,13 @@ const server = app.listen(PORT, async () => {
           logger.warn('[server] Event binding deferred — install the app first via /install', {
             error: err.message,
           });
+        }
+
+        // Provision custom UF fields in CRM (idempotent)
+        try {
+          await provisionAllFields();
+        } catch (err) {
+          logger.warn('[server] Field provisioning deferred', { error: err.message });
         }
       }
     } catch (err) {

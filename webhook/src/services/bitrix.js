@@ -50,10 +50,11 @@ async function callBitrix(method, params = {}) {
       const response = await axios.post(url, params, {
         timeout: config.bitrix.timeout,
         headers: { 'Content-Type': 'application/json' },
+        validateStatus: () => true, // Don't throw AxiosError on 4XX/5XX to parse Bitrix JSON
       });
 
-      if (response.data.error) {
-        const err = new Error(`Bitrix24 error: ${response.data.error} — ${response.data.error_description}`);
+      if (response.data && response.data.error) {
+        const err = new Error(`Bitrix24 error [${response.status}]: ${response.data.error} — ${response.data.error_description}`);
         // If token expired, try to refresh and retry
         if (response.data.error === 'expired_token') {
           try {
@@ -144,6 +145,35 @@ async function updateLead(leadId, fields) {
   return callBitrix('crm.lead.update', { id: leadId, fields });
 }
 
+/**
+ * Get all active users from Bitrix24.
+ * Requires the "user" scope in the OAuth application settings.
+ */
+async function getUsers() {
+  logger.info('[bitrix] Fetching active users');
+  return callBitrix('user.get', {
+    FILTER: { ACTIVE: 'Y' },
+  });
+}
+
+/**
+ * Retrieve a deal by ID.
+ * @param {number|string} dealId
+ */
+async function getDeal(dealId) {
+  return callBitrix('crm.deal.get', { id: dealId });
+}
+
+/**
+ * Update a deal's fields in Bitrix24.
+ * @param {number|string} dealId
+ * @param {object} fields
+ */
+async function updateDeal(dealId, fields) {
+  logger.info('[bitrix] Updating deal', { dealId, fields: Object.keys(fields) });
+  return callBitrix('crm.deal.update', { id: dealId, fields });
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
@@ -166,12 +196,86 @@ function calculateDeadline(priority) {
   return deadline;
 }
 
+/**
+ * Add a comment to a CRM entity's timeline.
+ * @param {'lead'|'deal'|'contact'|'company'} entityType
+ * @param {number|string} entityId
+ * @param {string} comment - Comment text (HTML supported)
+ */
+async function addTimelineComment(entityType, entityId, comment) {
+  const ownerTypeMap = {
+    lead: 'CRM_LEAD',
+    deal: 'CRM_DEAL',
+    contact: 'CRM_CONTACT',
+    company: 'CRM_COMPANY',
+  };
+
+  const ownerType = ownerTypeMap[entityType] || 'CRM_LEAD';
+  logger.info('[bitrix] Adding timeline comment', { entityType, entityId });
+
+  return callBitrix('crm.timeline.comment.add', {
+    fields: {
+      ENTITY_ID:   entityId,
+      ENTITY_TYPE: ownerType,
+      COMMENT:     comment,
+    },
+  });
+}
+
+/**
+ * Send an email reply via CRM activity.
+ * This creates an outgoing email activity on the entity and actually sends the email
+ * if the CRM mailbox integration is configured in Bitrix24.
+ *
+ * @param {object} params
+ * @param {'lead'|'deal'} params.entityType
+ * @param {number|string} params.entityId
+ * @param {string} params.toEmail - Recipient email address
+ * @param {string} params.toName  - Recipient name
+ * @param {string} params.subject - Email subject
+ * @param {string} params.body    - Email body (HTML)
+ */
+async function sendEmailReply({ entityType, entityId, toEmail, toName, subject, body }) {
+  if (!toEmail) {
+    logger.warn('[bitrix] Cannot send email reply — no email address', { entityType, entityId });
+    return null;
+  }
+
+  // Bitrix24 OWNER_TYPE_ID: 1 = Lead, 2 = Deal, 3 = Contact, 4 = Company
+  const ownerTypeId = entityType === 'deal' ? 2 : 1;
+
+  logger.info('[bitrix] Sending email reply', { entityType, entityId, toEmail });
+
+  return callBitrix('crm.activity.add', {
+    fields: {
+      OWNER_TYPE_ID:    ownerTypeId,
+      OWNER_ID:         entityId,
+      TYPE_ID:          4,           // Email
+      DIRECTION:        2,           // Outgoing
+      SUBJECT:          subject,
+      DESCRIPTION:      body,
+      DESCRIPTION_TYPE: 3,           // HTML
+      COMPLETED:        'Y',
+      COMMUNICATIONS:   [{
+        VALUE:      toEmail,
+        ENTITY_ID:  0,
+        TYPE:       'EMAIL',
+      }],
+    },
+  });
+}
+
 module.exports = {
   callBitrix,
   createTask,
   sendMessage,
   getLead,
   updateLead,
+  getUsers,
+  getDeal,
+  updateDeal,
+  addTimelineComment,
+  sendEmailReply,
   calculateDeadline,
   formatBitrixDate,
 };

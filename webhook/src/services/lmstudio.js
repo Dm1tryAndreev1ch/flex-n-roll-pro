@@ -97,7 +97,9 @@ FLEX-N-ROLL PRO — профессиональная типография, сп�
 }
 
 ## Формат ответа
-Верни ТОЛЬКО валидный JSON без markdown-блоков, без пояснений.
+Ты ОБЯЗАТЕЛЬНО должен вернуть ТОЛЬКО валидный JSON.
+ЗАПРЕЩЕНО добавлять блоки markdown, приветствия или рассуждения (Thinking Process).
+Твой ответ должен НАЧИНАТЬСЯ строго на символ "{" и ЗАКАНЧИВАТЬСЯ символом "}".
 Пример структуры:
 {
   "intent": "quote_request",
@@ -162,13 +164,17 @@ async function classifyMessage({ message, contactName, contactPhone, contactEmai
         model:           config.openai.model,
         max_tokens:      config.openai.maxTokens,
         temperature:     config.openai.temperature,
-        response_format: { type: 'json_object' },
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user',   content: userContent },
+          // Pre-fill assistant response to skip thinking and start JSON directly
+          { role: 'assistant', content: '{' },
         ],
+        // Attempt to disable Qwen3 thinking via backend-specific parameter
+        chat_template_kwargs: { enable_thinking: false },
       });
-      return completion.choices[0].message.content;
+      // Prepend the '{' we pre-filled since LM Studio continues from it
+      return '{' + (completion.choices[0].message.content || '');
     },
     {
       label: 'lmstudio.classify',
@@ -182,7 +188,19 @@ async function classifyMessage({ message, contactName, contactPhone, contactEmai
 
   let parsed;
   try {
-    parsed = JSON.parse(rawResponse);
+    // Models like Qwen/DeepSeek often emit "Thinking Process:" text that may
+    // contain curly braces. A naive /{[\s\S]*}/ would grab from the FIRST '{'
+    // (inside reasoning) to the LAST '}' — producing invalid JSON.
+    //
+    // Strategy: find every '{' position, substring from it to the last '}',
+    // and try JSON.parse. The first successful parse wins.
+    parsed = extractJSON(rawResponse);
+    if (!parsed) {
+      logger.error('[lmstudio] No valid JSON found in raw text', {
+        rawOutput: rawResponse?.substring(0, 800),
+      });
+      throw new Error('No JSON object found in the response');
+    }
   } catch (parseErr) {
     logger.error('[lmstudio] Failed to parse LLM response as JSON', {
       raw: rawResponse?.substring(0, 500),
@@ -251,7 +269,47 @@ function buildUserContent({ message, contactName, contactPhone, contactEmail, fi
     fileNames.forEach((f) => lines.push(`- ${f}`));
   }
 
+  // Qwen3 "thinking" models waste all tokens on reasoning and never
+  // output JSON.  The /no_think directive disables the thinking chain.
+  lines.push('\n/no_think');
+
   return lines.join('\n');
+}
+
+/**
+ * Robustly extract a JSON object from a string that may contain
+ * reasoning text, markdown, or other non-JSON content.
+ *
+ * Tries every '{' position paired with the last '}' in the string.
+ * Returns the first successfully parsed object, or null.
+ */
+function extractJSON(text) {
+  if (!text || typeof text !== 'string') return null;
+
+  const lastBrace = text.lastIndexOf('}');
+  if (lastBrace === -1) return null;
+
+  // Collect all '{' positions
+  const opens = [];
+  for (let i = 0; i <= lastBrace; i++) {
+    if (text[i] === '{') opens.push(i);
+  }
+
+  // Try from each '{' (earliest first) to the last '}'
+  for (const start of opens) {
+    const candidate = text.substring(start, lastBrace + 1);
+    try {
+      const obj = JSON.parse(candidate);
+      // Must be a plain object (not array, not primitive)
+      if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+        return obj;
+      }
+    } catch (_) {
+      // Try next candidate
+    }
+  }
+
+  return null;
 }
 
 module.exports = { classifyMessage };

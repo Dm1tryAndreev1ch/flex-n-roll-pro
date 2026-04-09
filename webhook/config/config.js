@@ -74,11 +74,13 @@ const config = {
     maxDelayMs:  parseIntSafe(optional('RETRY_MAX_DELAY_MS', '8000'), 8000),
   },
 
-  managers: {
-    sales:   (optional('MANAGER_IDS_SALES',   '1,2,3')).split(',').map(Number),
-    tech:    (optional('MANAGER_IDS_TECH',    '4')).split(',').map(Number),
-    quality: (optional('MANAGER_IDS_QUALITY', '5')).split(',').map(Number),
-    marking: (optional('MANAGER_IDS_MARKING', '6')).split(',').map(Number),
+  pools: {
+    sales:   optional('POOL_KEYWORDS_SALES',   'продаж,менеджер,sales').toLowerCase().split(',').map(s => s.trim()).filter(Boolean),
+    tech:    optional('POOL_KEYWORDS_TECH',    'дизайн,технолог,prepress,tech').toLowerCase().split(',').map(s => s.trim()).filter(Boolean),
+    quality: optional('POOL_KEYWORDS_QUALITY', 'качество,контроль,отк,quality').toLowerCase().split(',').map(s => s.trim()).filter(Boolean),
+    marking: optional('POOL_KEYWORDS_MARKING', 'маркиров,честный знак,marking').toLowerCase().split(',').map(s => s.trim()).filter(Boolean),
+    // Fallback user ID if no one matches the keywords
+    fallbackIds: optional('POOL_FALLBACK_IDS', '1').split(',').map(Number).filter(n => !Number.isNaN(n)),
   },
 
   sla: {

@@ -17,7 +17,12 @@ const {
   sendMessage,
   calculateDeadline,
   getLead,
+  getDeal,
+  updateDeal,
+  addTimelineComment,
+  sendEmailReply,
 } = require('../services/bitrix');
+const { resolveEnumId } = require('../services/fieldProvisioner');
 const {
   getNextManager,
   resolvePool,
@@ -60,6 +65,10 @@ router.post('/', async (req, res) => {
     switch (event) {
       case 'ONCRMLEADADD':
         await handleCrmLeadAdd(body);
+        break;
+
+      case 'ONCRMDEALADD':
+        await handleCrmDealAdd(body);
         break;
 
       case 'ONIMCONNECTORMESSAGEADD':
@@ -129,6 +138,41 @@ async function handleCrmLeadAdd(body) {
     contactEmail,
     fileNames: [],
     dialogId:  null,
+  });
+}
+
+/**
+ * Handle onCrmDealAdd — a new deal was created in Bitrix24 CRM.
+ */
+async function handleCrmDealAdd(body) {
+  const data   = body.data || body.DATA || {};
+  const fields = data.FIELDS || data.fields || {};
+  const dealId = fields.ID || fields.id;
+
+  if (!dealId) {
+    logger.warn('[webhook:crmDealAdd] Missing deal ID in event payload', { data });
+    return;
+  }
+
+  logger.info('[webhook:crmDealAdd] Processing new deal', { dealId });
+
+  let dealFields = fields;
+  try {
+    const dealData = await getDeal(dealId);
+    if (dealData) dealFields = dealData;
+  } catch (err) {
+    logger.warn('[webhook:crmDealAdd] Could not fetch deal details', { dealId, error: err.message });
+  }
+
+  const message = [
+    dealFields.COMMENTS,
+    dealFields.TITLE,
+  ].filter(Boolean).join('\n\n') || '(нет описания)';
+
+  await processDealClassification({
+    dealId,
+    message,
+    dealFields,
   });
 }
 
@@ -264,7 +308,7 @@ async function processLeadClassification({
 
   // Step 3: Update lead fields in Bitrix24
   if (leadId) {
-    const crmFields = buildCrmFields(classification, managerId);
+    const crmFields = buildCrmFields('lead', classification, managerId);
     await safeCall(
       () => updateLead(leadId, crmFields),
       `[pipeline] Failed to update lead ${leadId}`
@@ -290,42 +334,159 @@ async function processLeadClassification({
   }
 
   // Step 5: Send auto-reply to client
-  if (dialogId && auto_reply) {
-    await safeCall(
-      () => sendMessage(dialogId, auto_reply),
-      '[pipeline] Failed to send auto-reply'
-    );
+  if (auto_reply) {
+    // If there's an open dialog (IM / Open Lines), reply directly
+    if (dialogId) {
+      await safeCall(
+        () => sendMessage(dialogId, auto_reply),
+        '[pipeline] Failed to send auto-reply via IM'
+      );
+    }
+
+    // Send email reply if the client has an email address
+    const emailAddr = extracted_data.contact_email || contactEmail;
+    if (emailAddr && leadId) {
+      const emailName = extracted_data.contact_name || contactName || '';
+      await safeCall(
+        () => sendEmailReply({
+          entityType: 'lead',
+          entityId:   leadId,
+          toEmail:    emailAddr,
+          toName:     emailName,
+          subject:    `Re: ${classification.intent === 'quote_request' ? 'Your quote request' : 'Your inquiry'} - FLEX-N-ROLL PRO`,
+          body:       auto_reply.replace(/\n/g, '<br>'),
+        }),
+        '[pipeline] Failed to send email reply'
+      );
+    }
+
+    // Save auto-reply in the lead's timeline for the manager to see
+    if (leadId) {
+      await safeCall(
+        () => addTimelineComment('lead', leadId,
+          `<b>AI auto-reply:</b><br>${auto_reply}`),
+        '[pipeline] Failed to add timeline comment'
+      );
+    }
   }
 
   logger.info('[pipeline] Lead processing complete', { leadId, dialogId, priority });
+}
+
+/**
+ * Full pipeline for deals: classify → route → update deal → create task.
+ */
+async function processDealClassification({ dealId, message, dealFields }) {
+  let classification;
+  const classificationTimer = aiClassificationDuration.startTimer();
+  try {
+    classification = await classifyMessage({ message, fileNames: [] });
+    classificationTimer();
+  } catch (err) {
+    classificationTimer();
+    aiClassificationErrorsTotal.inc();
+    logger.error('[pipeline:deal] AI classification failed, using fallback', { dealId, error: err.message });
+    classification = {
+      intent: 'general_inquiry',
+      product_type: 'unknown',
+      urgency: 'medium',
+      route_to: 'sales',
+      priority: 3,
+      auto_reply: null,
+      extracted_data: {
+        contact_name: null, contact_phone: null, contact_email: null,
+        company: null, budget: null, deadline: null,
+        material: null, dimensions: null, quantity: null,
+        has_files: false, notes: `[Ошибка AI: ${err.message}]`,
+      },
+    };
+  }
+
+  const { intent, product_type, priority } = classification;
+
+  aiClassificationsTotal.inc({ intent, product_type, priority: String(priority) });
+
+  logger.info('[pipeline:deal] Classification result', { dealId, intent, product_type, priority });
+
+  const pool      = resolvePool(classification);
+  const managerId = await getNextManager(pool);
+
+  logger.info('[pipeline:deal] Manager assigned', { dealId, pool, managerId });
+
+  // Update deal fields
+  const crmFields = buildCrmFields('deal', classification, managerId);
+  await safeCall(
+    () => updateDeal(dealId, crmFields),
+    `[pipeline:deal] Failed to update deal ${dealId}`
+  );
+
+  // Create task linked to deal
+  const deadline        = calculateDeadline(priority);
+  const taskTitle       = buildTaskTitle(classification, dealId, 'deal');
+  const taskDescription = buildTaskDescription(classification, dealId, 'deal');
+
+  await safeCall(
+    () => createTask({
+      title:         taskTitle,
+      description:   taskDescription,
+      responsibleId: managerId,
+      deadline,
+      leadId:        null,  // No lead - it's a deal
+    }),
+    '[pipeline:deal] Failed to create task'
+  );
+
+  // Save auto-reply in the deal's timeline
+  if (classification.auto_reply) {
+    await safeCall(
+      () => addTimelineComment('deal', dealId,
+        `<b>AI auto-reply:</b><br>${classification.auto_reply}`),
+      '[pipeline:deal] Failed to add timeline comment'
+    );
+  }
+
+  logger.info('[pipeline:deal] Deal processing complete', { dealId, priority });
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
  * Map AI classification to Bitrix24 CRM field names.
- * Adjust UF_ field names to match your Bitrix24 configuration.
+ * Works for both leads and deals.
+ * @param {'lead'|'deal'} entityType
  */
-function buildCrmFields(classification, managerId) {
+function buildCrmFields(entityType, classification, managerId) {
   const { intent, product_type, urgency, priority, extracted_data: d } = classification;
 
   const fields = {
     ASSIGNED_BY_ID:        managerId,
-    UF_CRM_REQUEST_TYPE:   intent,
-    UF_CRM_PRODUCT_TYPE:   product_type,
-    UF_CRM_URGENCY:        urgency,
-    UF_CRM_AI_PRIORITY:    String(priority),
+    UF_CRM_REQUEST_TYPE:   resolveEnumId(entityType, 'REQUEST_TYPE', intent),
+    UF_CRM_PRODUCT_TYPE:   resolveEnumId(entityType, 'PRODUCT_TYPE', product_type),
+    UF_CRM_URGENCY:        resolveEnumId(entityType, 'URGENCY', urgency),
+    UF_CRM_AI_PRIORITY:    `P${priority}`,
     COMMENTS:              `[AI] Классифицировано: ${intent} / ${product_type} / P${priority}`,
   };
 
-  if (d.contact_name)  fields.NAME  = d.contact_name;
-  if (d.contact_phone) fields.PHONE = [{ VALUE: d.contact_phone, VALUE_TYPE: 'WORK' }];
-  if (d.contact_email) fields.EMAIL = [{ VALUE: d.contact_email, VALUE_TYPE: 'WORK' }];
-  if (d.company)       fields.COMPANY_TITLE = d.company;
+  // Set status depending on entity type
+  if (entityType === 'lead') {
+    fields.STATUS_ID = 'IN_PROCESS';
+  }
+
+  // Extracted data → custom fields
+  if (d.material)    fields.UF_CRM_MATERIAL       = d.material;
+  if (d.dimensions)  fields.UF_CRM_DIMENSIONS     = d.dimensions;
+  if (d.quantity)    fields.UF_CRM_QUANTITY        = Number(d.quantity) || 0;
+  if (d.deadline)    fields.UF_CRM_CLIENT_DEADLINE = d.deadline;
+
+  // Standard CRM fields
+  if (d.contact_name && entityType === 'lead')  fields.NAME  = d.contact_name;
+  if (d.contact_phone && entityType === 'lead') fields.PHONE = [{ VALUE: d.contact_phone, VALUE_TYPE: 'WORK' }];
+  if (d.contact_email && entityType === 'lead') fields.EMAIL = [{ VALUE: d.contact_email, VALUE_TYPE: 'WORK' }];
+  if (d.company && entityType === 'lead')       fields.COMPANY_TITLE = d.company;
 
   if (d.budget) {
     fields.OPPORTUNITY = d.budget;
-    fields.CURRENCY_ID = 'RUB';
+    fields.CURRENCY_ID = 'BYN';
   }
 
   return fields;

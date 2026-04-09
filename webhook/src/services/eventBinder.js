@@ -18,6 +18,7 @@ const axios  = require('axios');
 // Events that the webhook service handles directly
 const WEBHOOK_EVENTS = [
   'ONCRMLEADADD',
+  'ONCRMDEALADD',
 ];
 
 // Events forwarded to internal services via Event Gateway
