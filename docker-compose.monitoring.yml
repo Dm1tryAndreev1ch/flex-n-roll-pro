@@ -140,6 +140,38 @@ services:
     networks:
       - fnr-net
 
+  # ---------------------------------------------------------------------------
+  # Loki — агрегатор логов
+  # ---------------------------------------------------------------------------
+  loki:
+    image: grafana/loki:3.1.0
+    container_name: fnr-loki
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./monitoring/loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - fnr-net
+
+  # ---------------------------------------------------------------------------
+  # Promtail — агент сбора логов (парсит journald системы для Ollama)
+  # ---------------------------------------------------------------------------
+  promtail:
+    image: grafana/promtail:3.1.0
+    container_name: fnr-promtail
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/log/journal:/var/log/journal:ro
+      - /run/log/journal:/run/log/journal:ro
+      - /etc/machine-id:/etc/machine-id:ro
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - fnr-net
+
 # =============================================================================
 # Volumes
 # =============================================================================
@@ -147,6 +179,8 @@ volumes:
   prometheus-data:
     driver: local
   grafana-data:
+    driver: local
+  loki-data:
     driver: local
 
 # =============================================================================
