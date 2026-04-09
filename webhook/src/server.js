@@ -20,7 +20,10 @@ const { bindAllEvents }           = require('./services/eventBinder');
 const app = express();
 
 // ─── Security headers ─────────────────────────────────────────────────────────
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: false,
+  xFrameOptions: false,
+}));
 
 // Trust first proxy (nginx, Cloudflare, ngrok, etc.) for correct client IP
 app.set('trust proxy', 1);
@@ -63,6 +66,20 @@ app.use(
   verifyBitrixRequest,
   eventsRouter
 );
+
+// ─── Serve Analytics UI inside Bitrix24 iframe ────────────────────────────────
+app.all('/', async (req, res) => {
+  try {
+    const axios = require('axios');
+    // Fetch the single-file compiled React app from the analytics container
+    const response = await axios.get('http://fnr-analytics:80/');
+    res.set('Content-Type', 'text/html');
+    res.send(response.data);
+  } catch (err) {
+    logger.error('[server] Failed to proxy analytics UI', { error: err.message });
+    res.status(500).send('Аналитика временно недоступна');
+  }
+});
 
 // ─── 404 handler ──────────────────────────────────────────────────────────────
 app.use((req, res) => {

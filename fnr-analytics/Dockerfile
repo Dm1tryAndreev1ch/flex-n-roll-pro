@@ -4,6 +4,8 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install
 COPY . .
+ARG VITE_BITRIX_WEBHOOK_URL
+ENV VITE_BITRIX_WEBHOOK_URL=$VITE_BITRIX_WEBHOOK_URL
 RUN npm run build
 
 # Production stage — serve static files with nginx

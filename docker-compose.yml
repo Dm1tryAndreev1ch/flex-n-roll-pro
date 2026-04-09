@@ -119,7 +119,7 @@ services:
       dockerfile: Dockerfile
     container_name: fnr-commanalysis-scheduler
     restart: unless-stopped
-    command: ["node", "scheduler/dailyBatch.js"]
+    command: ["node", "scheduler/dailyBatch.js", "--cron"]
     env_file:
       - .env
     environment:
@@ -191,6 +191,8 @@ services:
     build:
       context: ./fnr-analytics
       dockerfile: Dockerfile
+      args:
+        - VITE_BITRIX_WEBHOOK_URL=${VITE_BITRIX_WEBHOOK_URL}
     container_name: fnr-analytics
     restart: unless-stopped
     expose:

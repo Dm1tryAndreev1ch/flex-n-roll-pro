@@ -215,14 +215,36 @@ async function processLeadClassification({
   } catch (err) {
     classificationTimer(); // stop timer on error
     aiClassificationErrorsTotal.inc();
-    logger.error('[pipeline] AI classification failed', { leadId, error: err.message });
+    logger.error('[pipeline] AI classification failed, using fallback', { leadId, error: err.message });
     // Send generic auto-reply if we have a dialog
     if (dialogId) {
       await safeCall(() =>
         sendMessage(dialogId, 'Ваше сообщение получено. Менеджер свяжется с вами в ближайшее время.')
       );
     }
-    return;
+    
+    // Fallback classification to ensure the lead is not dropped
+    classification = {
+      intent: 'general_inquiry',
+      product_type: 'unknown',
+      urgency: 'medium',
+      route_to: 'sales',
+      priority: 3,
+      auto_reply: null,
+      extracted_data: {
+        contact_name: contactName || null,
+        contact_phone: contactPhone || null,
+        contact_email: contactEmail || null,
+        company: null,
+        budget: null,
+        deadline: null,
+        material: null,
+        dimensions: null,
+        quantity: null,
+        has_files: false,
+        notes: `[ВНИМАНИЕ: Ошибка AI при анализе: ${err.message}]`
+      }
+    };
   }
 
   const { intent, product_type, urgency, route_to, priority, auto_reply, extracted_data } = classification;

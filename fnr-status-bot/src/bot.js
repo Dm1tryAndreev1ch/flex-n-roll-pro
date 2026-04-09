@@ -27,7 +27,7 @@ bot.start(async (ctx) => {
   const userName = ctx.from.first_name || 'клиент';
 
   await ctx.reply(
-    `👋 Здравствуйте, ${userName}!\n\n` +
+    `👋 Здравствуйте, ${escapeMarkdown(userName)}\\!\n\n` +
     `Я — бот типографии *FLEX\\-N\\-ROLL PRO*\\.\n` +
     `Помогу вам узнать статус вашего заказа\\.\n\n` +
     `Выберите действие из меню ниже: 👇`,

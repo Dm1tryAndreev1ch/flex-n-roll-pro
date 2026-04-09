@@ -73,7 +73,7 @@ async function exchangeCode(code) {
 
   logger.info('[oauth] Exchanging authorization code for tokens');
 
-  const response = await axios.get(`https://oauth.bitrix.info/oauth/token/`, {
+  const response = await axios.get(`https://${domain}/oauth/token/`, {
     params: {
       grant_type:    'authorization_code',
       client_id:     config.bitrix.clientId,
@@ -111,7 +111,8 @@ async function refreshTokens() {
 
   logger.info('[oauth] Refreshing access token');
 
-  const response = await axios.get(`https://oauth.bitrix.info/oauth/token/`, {
+  const domain = config.bitrix.portalDomain;
+  const response = await axios.get(`https://${domain}/oauth/token/`, {
     params: {
       grant_type:    'refresh_token',
       client_id:     config.bitrix.clientId,
