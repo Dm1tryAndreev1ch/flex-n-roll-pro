@@ -15,7 +15,7 @@ FLEX-N-ROLL PRO — монорепозиторий для типографии, 
 | `fnr-commanalysis-scheduler` | Ежедневные сводные отчёты (cron) | — |
 | `fnr-status-bot` | Telegram-бот проверки статуса заказов | — (long-polling) |
 | `fnr-marking` | Интеграция с Честным ЗНАКом (ГИС МТ), генерация DataMatrix | `fnr-marking:3000` |
-| `fnr-analytics` | Дашборд аналитики (React SPA, nginx) — в `docker-compose.calculator.yml` | `fnr-analytics:80` |
+| `fnr-analytics` | Дашборд аналитики (React SPA, nginx) | `fnr-analytics:80` |
 | `fnr-redis` | Кэш, rate limiting, round-robin счётчики менеджеров | `fnr-redis:6379` |
 | `fnr-prometheus`| Сбор и хранение метрик со всех сервисов | `fnr-prometheus:9090` |
 | `fnr-grafana` | Визуализация метрик и дашборды | `fnr-grafana:3000` (host: 3001) |
@@ -92,7 +92,7 @@ docker compose -f docker-compose.monitoring.yml up -d
 
 | Сервис | URL (внутренний) | Данные для входа |
 |---|---|---|
-| **FNR Analytics** (Дашборд) | http://fnr-analytics:80 | Пароль: `fnr2024` (по умолчанию, настраивается в Settings) |
+| **FNR Analytics** (Дашборд) | http://fnr-analytics:80 | Логин: `admin` или `analyst`<br>Пароль: `admin123` или `analyst123`<br>2FA Код: `123456` |
 | **Grafana** (Метрики сервисов) | http://localhost:3001 | *См. переменные `GRAFANA_ADMIN_USER` и `GRAFANA_ADMIN_PASSWORD` в `.env`* |
 
 ---
@@ -318,16 +318,6 @@ mkdir -p marking/data/production/orders
 ```
 
 В Docker директория создаётся автоматически через volume `marking-data`.
-
-### fnr-analytics — в отдельном compose-файле
-
-`fnr-analytics` размещён в `docker-compose.calculator.yml` (фронтенд-сервисы):
-
-```bash
-docker compose -f docker-compose.calculator.yml up --build -d
-```
-
-Bitrix24 Webhook URL **не нужен** при сборке — пользователи настраивают его через страницу **Settings** в интерфейсе приложения (сохраняется в localStorage браузера).
 
 ### Redis в webhook недоступен локально
 
