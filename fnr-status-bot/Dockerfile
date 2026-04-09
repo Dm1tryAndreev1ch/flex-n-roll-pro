@@ -2,7 +2,7 @@ FROM node:20-alpine
 WORKDIR /app
 RUN mkdir -p /app/logs
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 COPY . .
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup \
     && chown -R appuser:appgroup /app

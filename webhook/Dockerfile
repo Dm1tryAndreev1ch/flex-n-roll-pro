@@ -7,7 +7,7 @@ RUN apk add --no-cache curl
 # Install dependencies only (layer cached separately)
 FROM base AS deps
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 
 # Production image
 FROM base AS runner

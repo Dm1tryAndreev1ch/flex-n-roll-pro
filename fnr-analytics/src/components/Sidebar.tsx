@@ -1,23 +1,26 @@
+import React from "react";
 import {
   LayoutDashboard,
-  TrendingUp,
-  UserX,
-  Clock,
-  ShoppingBag,
-  RefreshCw,
   Settings,
   LogOut,
   ChevronRight,
   Activity,
+  Briefcase,
+  Users,
+  CalendarCheck,
+  LineChart,
+  Trophy,
+  PieChart
 } from "lucide-react";
 
 export type Page =
   | "dashboard"
-  | "predict"
-  | "churn"
-  | "optimizer"
-  | "crosssell"
-  | "retrain"
+  | "deals"
+  | "contacts"
+  | "activities"
+  | "finance"
+  | "managers"
+  | "activity_rep"
   | "settings";
 
 interface SidebarProps {
@@ -29,13 +32,14 @@ interface SidebarProps {
 }
 
 const NAV_ITEMS: { id: Page; label: string; icon: React.ReactNode; badge?: string }[] = [
-  { id: "dashboard",  label: "Дашборд",         icon: <LayoutDashboard size={18} /> },
-  { id: "predict",    label: "Прогноз сделок",   icon: <TrendingUp size={18} />,   badge: "07:00" },
-  { id: "churn",      label: "Churn Detection",  icon: <UserX size={18} />,         badge: "08:00" },
-  { id: "optimizer",  label: "Время контакта",   icon: <Clock size={18} />,         badge: "09:00" },
-  { id: "crosssell",  label: "Cross-Sell",       icon: <ShoppingBag size={18} />,   badge: "Пн" },
-  { id: "retrain",    label: "Переобучение",     icon: <RefreshCw size={18} />,     badge: "1-е" },
-  { id: "settings",   label: "Настройки",        icon: <Settings size={18} /> },
+  { id: "dashboard",    label: "Дашборд",         icon: <LayoutDashboard size={18} /> },
+  { id: "deals",        label: "Сделки (Воронка)", icon: <Briefcase size={18} /> },
+  { id: "contacts",     label: "База клиентов",    icon: <Users size={18} /> },
+  { id: "activities",   label: "Активности CRM",   icon: <CalendarCheck size={18} /> },
+  { id: "finance",      label: "Финансы",          icon: <LineChart size={18} /> },
+  { id: "managers",     label: "KPI Менеджеров",   icon: <Trophy size={18} /> },
+  { id: "activity_rep", label: "Анализ активности", icon: <PieChart size={18} /> },
+  { id: "settings",     label: "Настройки",        icon: <Settings size={18} /> },
 ];
 
 export default function Sidebar({ current, onChange, onLogout, collapsed, onToggle }: SidebarProps) {

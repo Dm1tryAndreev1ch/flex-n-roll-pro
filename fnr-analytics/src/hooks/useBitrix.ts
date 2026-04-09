@@ -86,3 +86,53 @@ export function useBitrixActivities(filter: Record<string, any> = {}, limit = 50
 
   return { activities, loading, error };
 }
+
+export function useBitrixUsers(filter: Record<string, any> = {}) {
+  const [users, setUsers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetch = async () => {
+      try {
+        setLoading(true);
+        const data = await bitrix.getUsers(filter);
+        setUsers(data);
+        setError(null);
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(filter)]);
+
+  return { users, loading, error };
+}
+
+export function useBitrixCompanies(filter: Record<string, any> = {}, limit = 500) {
+  const [companies, setCompanies] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetch = async () => {
+      try {
+        setLoading(true);
+        const data = await bitrix.getCompanies(filter, limit);
+        setCompanies(data);
+        setError(null);
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(filter), limit]);
+
+  return { companies, loading, error };
+}

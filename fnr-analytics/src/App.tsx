@@ -2,31 +2,33 @@ import { useState, useEffect } from "react";
 import LoginPage from "./components/LoginPage";
 import Sidebar, { type Page } from "./components/Sidebar";
 import Dashboard from "./components/Dashboard";
-import PredictPage from "./components/PredictPage";
-import ChurnPage from "./components/ChurnPage";
-import OptimizerPage from "./components/OptimizerPage";
-import CrossSellPage from "./components/CrossSellPage";
-import RetrainPage from "./components/RetrainPage";
+import DealsPage from "./components/DealsPage";
+import ContactsPage from "./components/ContactsPage";
+import ActivitiesPage from "./components/ActivitiesPage";
 import SettingsPage from "./components/SettingsPage";
+import FinanceReportPage from "./components/FinanceReportPage";
+import ManagersReportPage from "./components/ManagersReportPage";
+import ActivityReportPage from "./components/ActivityReportPage";
 import { Bell, Search } from "lucide-react";
 
 type AuthState = "login" | "app";
 
 const PAGE_TITLES: Record<Page, string> = {
-  dashboard: "Дашборд",
-  predict:   "Прогноз сделок",
-  churn:     "Churn Detection",
-  optimizer: "Время контакта",
-  crosssell: "Cross-Sell",
-  retrain:   "Переобучение",
-  settings:  "Настройки",
+  dashboard:    "Дашборд",
+  deals:        "Воронка продаж",
+  contacts:     "База клиентов",
+  activities:   "Активности",
+  settings:     "Настройки",
+  finance:      "Финансовая аналитика",
+  managers:     "Эффективность менеджеров",
+  activity_rep: "Сводка по активностям"
 };
 
 export default function App() {
   const [auth, setAuth] = useState<AuthState>("login");
   const [page, setPage] = useState<Page>("dashboard");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [notifications] = useState(3);
+  const [notifications] = useState(0);
   const [time, setTime] = useState(new Date());
 
   useEffect(() => {
@@ -40,14 +42,15 @@ export default function App() {
 
   const renderPage = () => {
     switch (page) {
-      case "dashboard":  return <Dashboard />;
-      case "predict":    return <PredictPage />;
-      case "churn":      return <ChurnPage />;
-      case "optimizer":  return <OptimizerPage />;
-      case "crosssell":  return <CrossSellPage />;
-      case "retrain":    return <RetrainPage />;
-      case "settings":   return <SettingsPage />;
-      default:           return <Dashboard />;
+      case "dashboard":    return <Dashboard />;
+      case "deals":        return <DealsPage />;
+      case "contacts":     return <ContactsPage />;
+      case "activities":   return <ActivitiesPage />;
+      case "finance":      return <FinanceReportPage />;
+      case "managers":     return <ManagersReportPage />;
+      case "activity_rep": return <ActivityReportPage />;
+      case "settings":     return <SettingsPage />;
+      default:             return <Dashboard />;
     }
   };
 
@@ -121,15 +124,13 @@ export default function App() {
         {/* Footer */}
         <footer className="shrink-0 px-6 py-2 border-t border-white/5 flex items-center justify-between">
           <div className="flex items-center gap-4 text-white/15 text-xs">
-            <span>FLEX-N-ROLL Analytics v2.1.0</span>
+            <span>FLEX-N-ROLL Analytics v2.2.0</span>
             <span>·</span>
             <span>Bitrix24 CRM</span>
-            <span>·</span>
-            <span>4 активных модели</span>
           </div>
           <div className="flex items-center gap-1.5">
             <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-            <span className="text-white/20 text-xs">Планировщик работает</span>
+            <span className="text-white/20 text-xs">Подключено к CRM</span>
           </div>
         </footer>
       </div>

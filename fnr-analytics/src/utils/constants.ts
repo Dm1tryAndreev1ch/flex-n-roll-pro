@@ -26,3 +26,11 @@ export const getStageInfo = (stageId: string) => {
   
   return { label: stageId, color: "blue" };
 };
+
+export const getUserName = (id: string | number, usersCache: any[]) => {
+  if (!id) return "Не назначен";
+  const user = usersCache.find((u: any) => String(u.ID) === String(id));
+  if (!user) return `ID: ${id}`;
+  const name = `${user.NAME || ''} ${user.LAST_NAME || ''}`.trim();
+  return name || `ID: ${id}`;
+};

@@ -66,7 +66,6 @@ export class BitrixClient {
 
     return allItems;
   }
-}
 
   // --------------------------------------------------------------------------
   // CRM API Methods
@@ -98,6 +97,12 @@ export class BitrixClient {
       filter,
       select: ["ID", "OWNER_ID", "OWNER_TYPE_ID", "TYPE_ID", "PROVIDER_ID", "DIRECTION", "SUBJECT", "START_TIME", "END_TIME", "COMPLETED", "AUTHOR_ID", "RESPONSIBLE_ID"],
     }, limit);
+  }
+
+  public async getUsers(filter: Record<string, any> = {}) {
+    // Note: user.get uses different pagination/keys than CRM entities sometimes, but usually `start` and `user.get` just returns arrays under `result`.
+    // It doesn't support the 'select' param typically, returns all available fields.
+    return this.fetchAllList("user.get", filter);
   }
 }
 
