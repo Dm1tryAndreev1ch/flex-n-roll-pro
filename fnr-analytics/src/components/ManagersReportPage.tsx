@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import { useMemo } from "react";
 import { Loader2, Trophy, PhoneCall } from "lucide-react";
 import { useBitrixDeals, useBitrixUsers, useBitrixActivities } from "../hooks/useBitrix";
 import { getStageInfo, getUserName } from "../utils/constants";

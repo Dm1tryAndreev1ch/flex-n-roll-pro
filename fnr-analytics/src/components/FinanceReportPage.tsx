@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import { useMemo } from "react";
 import { Loader2, DollarSign, Target, TrendingUp } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { useBitrixDeals } from "../hooks/useBitrix";
@@ -200,7 +200,10 @@ export default function FinanceReportPage() {
               <YAxis tick={{ fill: "rgba(255,255,255,0.3)" }} axisLine={false} tickLine={false} />
               <Tooltip 
                 contentStyle={{ background: "#1a2235", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "12px", color: "white" }} 
-                formatter={(value: number) => [`${value.toLocaleString()} ₽`, 'Выручка']}
+                formatter={(value: any) => {
+                  const num = typeof value === 'number' ? value : parseFloat(value || '0');
+                  return [`${num.toLocaleString('ru-RU')} ₽`, 'Сумма'];
+                }}
               />
               <Bar dataKey="revenue" name="Выручка" fill="#10b981" radius={[4, 4, 0, 0]} />
             </BarChart>

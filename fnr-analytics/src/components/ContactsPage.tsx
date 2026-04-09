@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { Search, Loader2 } from "lucide-react";
 import { useBitrixContacts, useBitrixCompanies } from "../hooks/useBitrix";
 import ExportButton from "./ExportButton";
@@ -34,10 +34,10 @@ export default function ContactsPage() {
         { header: "Фамилия", key: "LAST_NAME", width: 15 },
         { header: "Отчество", key: "SECOND_NAME", width: 15 },
         { header: "Должность", key: "POST", width: 20 },
-        { header: "Телефоны", key: "PHONE", width: 25, formatter: (val) => val && val.length ? val.map((p: any) => p.VALUE).join(', ') : '' },
-        { header: "Email", key: "EMAIL", width: 25, formatter: (val) => val && val.length ? val.map((e: any) => e.VALUE).join(', ') : '' },
+        { header: "Телефоны", key: "PHONE", width: 25, formatter: (val: any) => val && val.length ? val.map((p: any) => p.VALUE).join(', ') : '' },
+        { header: "Email", key: "EMAIL", width: 25, formatter: (val: any) => val && val.length ? val.map((e: any) => e.VALUE).join(', ') : '' },
         { header: "Компания (ID)", key: "COMPANY_ID", width: 15 },
-        { header: "Дата создания", key: "DATE_CREATE", width: 18, formatter: (val) => val ? new Date(val).toLocaleDateString('ru-RU') : '' },
+        { header: "Дата создания", key: "DATE_CREATE", width: 18, formatter: (val: any) => val ? new Date(val).toLocaleDateString('ru-RU') : '' },
       ],
       data: filteredContacts,
       summaryRows: [
@@ -70,7 +70,7 @@ export default function ContactsPage() {
           { header: "Тип", key: "COMPANY_TYPE", width: 20 },
           { header: "Сфера деятельности", key: "INDUSTRY", width: 20 },
           { header: "Выручка (₽)", key: "REVENUE", width: 18, formatter: (v: any) => parseFloat(v || 0) },
-          { header: "Дата создания", key: "DATE_CREATE", width: 18, formatter: (val) => val ? new Date(val).toLocaleDateString('ru-RU') : '' },
+          { header: "Дата создания", key: "DATE_CREATE", width: 18, formatter: (val: any) => val ? new Date(val).toLocaleDateString('ru-RU') : '' },
           { header: "Ответственный (ID)", key: "ASSIGNED_BY_ID", width: 18 },
         ],
         data: filteredCompanies,

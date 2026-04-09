@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import { useMemo } from "react";
 import { Loader2, Calendar } from "lucide-react";
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { useBitrixActivities, useBitrixUsers } from "../hooks/useBitrix";
@@ -79,7 +79,7 @@ export default function ActivityReportPage() {
         columns: [
           { header: "Тип", key: "name", width: 25 },
           { header: "Количество", key: "count", width: 15 },
-          { header: "Доля (%)", key: "share", width: 12, formatter: (v: any, row: any) => activities.length ? Math.round((row.count / activities.length)*100) + '%' : '0%' }
+          { header: "Доля (%)", key: "share", width: 12, formatter: (_v: any, row: any) => activities.length ? Math.round((row.count / activities.length)*100) + '%' : '0%' }
         ],
         data: byType,
         summaryRows: [
@@ -111,7 +111,7 @@ export default function ActivityReportPage() {
             { header: "Всего задач", key: "total", width: 15 },
             { header: "Успешно закрыто", key: "completed", width: 18 },
             { header: "Просрочено", key: "overDues", width: 15 },
-            { header: "Уровень SLA (%)", key: "sla", width: 18, formatter: (v: any, row: any) => row.total ? Math.round(((row.total - row.overDues) / row.total) * 100) + '%' : '100%'}
+            { header: "Уровень SLA (%)", key: "sla", width: 18, formatter: (_v: any, row: any) => row.total ? Math.round(((row.total - row.overDues) / row.total) * 100) + '%' : '100%'}
          ],
          data: Object.values(mStats).sort((a,b) => b.total - a.total)
       }
@@ -137,7 +137,7 @@ export default function ActivityReportPage() {
           ) : (
              <ResponsiveContainer width="100%" height={300}>
               <PieChart>
-                <Pie data={byType} dataKey="count" nameKey="name" cx="50%" cy="50%" outerRadius={100} label={({name, percent}) => `${name}: ${(percent * 100).toFixed(0)}%`}>
+                <Pie data={byType} dataKey="count" nameKey="name" cx="50%" cy="50%" outerRadius={100} label={({name, percent}) => `${name}: ${((percent ?? 0) * 100).toFixed(0)}%`}>
                   {byType.map((_, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
                 </Pie>
                 <Tooltip contentStyle={{ background: "#1a2235", border: "none", borderRadius: "10px", color: "white" }} />

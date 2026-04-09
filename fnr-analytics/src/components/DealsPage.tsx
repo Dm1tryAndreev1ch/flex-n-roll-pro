@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { Filter, Search, Loader2 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { useBitrixDeals } from "../hooks/useBitrix";
@@ -33,9 +33,7 @@ export default function DealsPage() {
   const exportSheets: SheetDefinition[] = useMemo(() => {
     const totalAmount = filteredDeals.reduce((s, d) => s + parseFloat(d.OPPORTUNITY || 0), 0);
     const wonDeals = filteredDeals.filter(d => getStageInfo(d.STAGE_ID).color === 'green');
-    const wonAmount = wonDeals.reduce((s, d) => s + parseFloat(d.OPPORTUNITY || 0), 0);
     const activeDeals = filteredDeals.filter(d => d.CLOSED === 'N');
-    const activeAmount = activeDeals.reduce((s, d) => s + parseFloat(d.OPPORTUNITY || 0), 0);
 
     return [
       // Sheet 1: All deals

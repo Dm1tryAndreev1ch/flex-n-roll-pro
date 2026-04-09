@@ -1,9 +1,8 @@
-import React from "react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { TrendingUp, Users, Target, Activity, CheckCircle, AlertTriangle, Loader2 } from "lucide-react";
+import { TrendingUp, Users, Target, Activity, Loader2 } from "lucide-react";
 import { useBitrixDeals, useBitrixContacts, useBitrixActivities } from "../hooks/useBitrix";
 import { getStageInfo } from "../utils/constants";
-import ExportButton from "./ExportButton";
+
 
 const StatCard = ({ title, value, icon, gradient, color, loading }: any) => (
   <div className={`bg-gradient-to-br ${gradient} border border-${color}-500/20 rounded-2xl p-5 relative overflow-hidden`}>

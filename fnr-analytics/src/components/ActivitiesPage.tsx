@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { Search, Loader2, Phone, Mail, CheckSquare, Calendar as CalendarIcon } from "lucide-react";
 import { useBitrixActivities, useBitrixUsers } from "../hooks/useBitrix";
 import ExportButton from "./ExportButton";
