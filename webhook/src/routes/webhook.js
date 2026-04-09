@@ -5,6 +5,11 @@ const express = require('express');
 const router  = express.Router();
 
 const logger = require('../utils/logger');
+const {
+  aiClassificationsTotal,
+  aiClassificationErrorsTotal,
+  aiClassificationDuration,
+} = require('../utils/metrics');
 const { classifyMessage } = require('../services/lmstudio');
 const {
   updateLead,
@@ -195,8 +200,9 @@ async function processLeadClassification({
   fileNames,
   dialogId,
 }) {
-  // Step 1: AI classification
+  // Step 1: AI classification (with metrics instrumentation)
   let classification;
+  const classificationTimer = aiClassificationDuration.startTimer();
   try {
     classification = await classifyMessage({
       message,
@@ -205,7 +211,10 @@ async function processLeadClassification({
       contactEmail,
       fileNames,
     });
+    classificationTimer(); // stop timer on success
   } catch (err) {
+    classificationTimer(); // stop timer on error
+    aiClassificationErrorsTotal.inc();
     logger.error('[pipeline] AI classification failed', { leadId, error: err.message });
     // Send generic auto-reply if we have a dialog
     if (dialogId) {
@@ -217,6 +226,9 @@ async function processLeadClassification({
   }
 
   const { intent, product_type, urgency, route_to, priority, auto_reply, extracted_data } = classification;
+
+  // Record classification metrics
+  aiClassificationsTotal.inc({ intent, product_type, priority: String(priority) });
 
   logger.info('[pipeline] Classification result', {
     leadId, intent, product_type, priority, route_to, urgency,

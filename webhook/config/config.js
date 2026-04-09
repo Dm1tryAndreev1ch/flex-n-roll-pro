@@ -18,6 +18,11 @@ function parseIntSafe(val, fallback) {
   return Number.isNaN(n) ? fallback : n;
 }
 
+function parseFloatSafe(val, fallback) {
+  const n = parseFloat(val);
+  return Number.isNaN(n) ? fallback : n;
+}
+
 const config = {
   server: {
     port: parseIntSafe(optional('PORT', '3000'), 3000),
@@ -30,15 +35,28 @@ const config = {
     baseURL:     optional('OPENAI_BASE_URL', 'http://localhost:1234/v1'),
     model:       optional('OPENAI_MODEL', 'local-model'),
     maxTokens:   parseIntSafe(optional('OPENAI_MAX_TOKENS', '1024'), 1024),
-    temperature: parseFloat(optional('OPENAI_TEMPERATURE', '0.2')),
+    temperature: parseFloatSafe(optional('OPENAI_TEMPERATURE', '0.2'), 0.2),
     timeout:     parseIntSafe(optional('OPENAI_TIMEOUT_MS', '30000'), 30000),
   },
 
   bitrix: {
-    webhookUrl:     required('BITRIX_WEBHOOK_URL'),
+    // Incoming webhook URL (fallback for API calls if OAuth not configured)
+    webhookUrl:     optional('BITRIX_WEBHOOK_URL', ''),
     portalDomain:   optional('BITRIX_PORTAL_DOMAIN', ''),
+    // Legacy outgoing webhook token (kept for backward compatibility)
     outgoingToken:  optional('BITRIX_OUTGOING_TOKEN', ''),
     timeout:        parseIntSafe(optional('BITRIX_TIMEOUT_MS', '15000'), 15000),
+    // OAuth application credentials (local app)
+    clientId:       optional('BITRIX_CLIENT_ID', ''),
+    clientSecret:   optional('BITRIX_CLIENT_SECRET', ''),
+    // Application token (from app settings in Bitrix24, used to verify incoming events)
+    appToken:       optional('BITRIX_APP_TOKEN', ''),
+  },
+
+  ngrok: {
+    authToken: optional('NGROK_AUTHTOKEN', ''),
+    // Optional: fixed domain (paid ngrok plans only)
+    domain:    optional('NGROK_DOMAIN', ''),
   },
 
   redis: {

@@ -197,7 +197,10 @@ app.post('/api/chats/analyze', async (req, res) => {
 
     const analysisResult = await chatAnalyzer.analyzeChat({ dealId, messages: msgs });
 
-    const managerInfo = await bitrixClient.getUserById(analysisResult.managerId);
+    const managerId = analysisResult.managerId
+      || (msgs.find(m => m.userId)?.userId)
+      || config.reports.managerUserId;
+    const managerInfo = await bitrixClient.getUserById(managerId);
     const contactInfo = await bitrixClient.getContactByDealId(dealId);
 
     const card = reporter.buildCard({

@@ -16,7 +16,6 @@ __pycache__/
 .Python
 env/
 venv/
-.env
 .venv
 pip-log.txt
 pip-delete-this-directory.txt
@@ -35,9 +34,6 @@ pip-delete-this-directory.txt
 .env.development.local
 .env.test.local
 .env.production.local
-.env.*
-
-# Ignore everything matching .env except .env.example
 !.env.example
 
 # Logs and Data

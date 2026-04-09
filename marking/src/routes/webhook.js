@@ -49,7 +49,7 @@ router.post('/b24', async (req, res) => {
 
   // Битрикс24 передаёт данные с префиксами: data[FIELDS][ID] и т.п.
   // Нормализуем для удобства:
-  const event = body.event || '';
+  const event = (body.event || body.EVENT || '').toUpperCase();
   const dealId =
     body?.data?.FIELDS?.ID ||
     body?.['data[FIELDS][ID]'] ||
@@ -59,6 +59,12 @@ router.post('/b24', async (req, res) => {
   logger.info(`[webhook] Событие: ${event}, dealId: ${dealId}`);
 
   if (!event || !dealId) {
+    return res.status(200).send('ok');
+  }
+
+  // Only process deal update events
+  if (event !== 'ONCRMDEALUPDATE') {
+    logger.debug(`[webhook] Пропуск события ${event} — ожидается ONCRMDEALUPDATE`);
     return res.status(200).send('ok');
   }
 

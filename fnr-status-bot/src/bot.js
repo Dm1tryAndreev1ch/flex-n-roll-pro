@@ -171,6 +171,16 @@ bot.catch((err, ctx) => {
     stack: err.stack,
   });
 
+  // Don't try to reply if bot is blocked by user (403) or chat not found (400)
+  const errCode = err?.response?.error_code || err?.code;
+  if (errCode === 403 || errCode === 400) {
+    logger.warn(`Бот заблокирован пользователем или чат не найден, пропуск ответа`, {
+      userId: ctx.from?.id,
+      errorCode: errCode,
+    });
+    return;
+  }
+
   ctx.reply('⚠️ Произошла ошибка. Попробуйте позже или свяжитесь с менеджером.')
     .catch(() => {});
 });

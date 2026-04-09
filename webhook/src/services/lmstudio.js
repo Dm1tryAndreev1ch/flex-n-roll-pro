@@ -254,4 +254,4 @@ function buildUserContent({ message, contactName, contactPhone, contactEmail, fi
   return lines.join('\n');
 }
 
-module.exports = { classifyMessage, SYSTEM_PROMPT };
+module.exports = { classifyMessage };

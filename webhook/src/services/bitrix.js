@@ -9,7 +9,11 @@ const { withRetry, isTransientError } = require('../utils/retry');
 // ─── REST API client ──────────────────────────────────────────────────────────
 
 /**
- * Call a Bitrix24 REST API method via incoming webhook URL.
+ * Call a Bitrix24 REST API method.
+ *
+ * Supports two modes:
+ *   1. OAuth (primary)  — uses access_token from oauth module
+ *   2. Webhook (fallback) — uses BITRIX_WEBHOOK_URL if OAuth not configured
  *
  * @param {string} method - e.g. 'crm.lead.update'
  * @param {object} params - Method parameters
@@ -18,9 +22,30 @@ const { withRetry, isTransientError } = require('../utils/retry');
 async function callBitrix(method, params = {}) {
   return withRetry(
     async (attempt) => {
-      const url = `${config.bitrix.webhookUrl.replace(/\/+$/, '/')}${method}`;
+      let url;
 
-      logger.debug(`[bitrix] Calling ${method}`, { attempt });
+      // Try OAuth first
+      try {
+        const oauth = require('./oauth');
+        const accessToken = await oauth.getAccessToken();
+        const domain = await oauth.getPortalDomain();
+
+        if (accessToken && domain) {
+          url = `https://${domain}/rest/${method}?auth=${accessToken}`;
+          logger.debug(`[bitrix] Calling ${method} via OAuth`, { attempt });
+        }
+      } catch {
+        // OAuth not available — fall through to webhook URL
+      }
+
+      // Fallback to webhook URL
+      if (!url) {
+        if (!config.bitrix.webhookUrl) {
+          throw new Error('Neither OAuth nor BITRIX_WEBHOOK_URL configured');
+        }
+        url = `${config.bitrix.webhookUrl.replace(/\/+$/, '/')}${method}`;
+        logger.debug(`[bitrix] Calling ${method} via webhook URL`, { attempt });
+      }
 
       const response = await axios.post(url, params, {
         timeout: config.bitrix.timeout,
@@ -28,14 +53,30 @@ async function callBitrix(method, params = {}) {
       });
 
       if (response.data.error) {
-        throw new Error(`Bitrix24 error: ${response.data.error} — ${response.data.error_description}`);
+        const err = new Error(`Bitrix24 error: ${response.data.error} — ${response.data.error_description}`);
+        // If token expired, try to refresh and retry
+        if (response.data.error === 'expired_token') {
+          try {
+            const oauth = require('./oauth');
+            await oauth.refreshTokens();
+            logger.info('[bitrix] Token refreshed after expired_token error');
+          } catch (refreshErr) {
+            logger.error('[bitrix] Failed to refresh token', { error: refreshErr.message });
+          }
+          err.isTokenExpired = true;
+        }
+        throw err;
       }
 
       return response.data.result;
     },
     {
       label: `bitrix.${method}`,
-      shouldRetry: (err) => isTransientError(err),
+      shouldRetry: (err) => {
+        // Always retry token expiry (after refresh)
+        if (err.isTokenExpired) return true;
+        return isTransientError(err);
+      },
     }
   );
 }
@@ -71,17 +112,6 @@ async function createTask({ title, description, responsibleId, deadline, leadId 
 }
 
 /**
- * Update a deal's fields in Bitrix24.
- *
- * @param {number|string} dealId
- * @param {object} fields - Key/value map of CRM fields to update
- */
-async function updateDeal(dealId, fields) {
-  logger.info('[bitrix] Updating deal', { dealId, fields: Object.keys(fields) });
-  return callBitrix('crm.deal.update', { id: dealId, fields });
-}
-
-/**
  * Send a message via Bitrix24 Open Lines (IM).
  *
  * @param {string|number} dialogId - Dialog/chat ID from the webhook event
@@ -101,14 +131,6 @@ async function sendMessage(dialogId, text) {
  */
 async function getLead(leadId) {
   return callBitrix('crm.lead.get', { id: leadId });
-}
-
-/**
- * Retrieve a contact by ID.
- * @param {number|string} contactId
- */
-async function getContact(contactId) {
-  return callBitrix('crm.contact.get', { id: contactId });
 }
 
 /**
@@ -147,10 +169,8 @@ function calculateDeadline(priority) {
 module.exports = {
   callBitrix,
   createTask,
-  updateDeal,
   sendMessage,
   getLead,
-  getContact,
   updateLead,
   calculateDeadline,
   formatBitrixDate,

@@ -80,7 +80,6 @@ async function metricsEndpoint(_req, res) {
 }
 
 module.exports = {
-  register,
   metricsMiddleware,
   metricsEndpoint,
   aiClassificationsTotal,

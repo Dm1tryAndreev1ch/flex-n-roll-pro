@@ -17,7 +17,7 @@ const ROUTE_MAP = {
 const DEFAULT_POOL = 'sales';
 
 // Counter file path (fallback when Redis is unavailable)
-const COUNTER_FILE = path.resolve('./data/routing_counters.json');
+const COUNTER_FILE = path.resolve(__dirname, '../../data/routing_counters.json');
 
 // ─── Round-robin counter store ────────────────────────────────────────────────
 // Uses Redis if available, otherwise a local JSON file.
@@ -236,5 +236,4 @@ module.exports = {
   resolvePool,
   buildTaskTitle,
   buildTaskDescription,
-  ROUTE_MAP,
 };

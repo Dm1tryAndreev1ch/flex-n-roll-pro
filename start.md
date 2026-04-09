@@ -17,8 +17,10 @@ FLEX-N-ROLL PRO — монорепозиторий для типографии, 
 | `fnr-marking` | Интеграция с Честным ЗНАКом (ГИС МТ), генерация DataMatrix | `fnr-marking:3000` |
 | `fnr-analytics` | Дашборд аналитики (React SPA, nginx) | `fnr-analytics:80` |
 | `fnr-redis` | Кэш, rate limiting, round-robin счётчики менеджеров | `fnr-redis:6379` |
+| `fnr-prometheus`| Сбор и хранение метрик со всех сервисов | `fnr-prometheus:9090` |
+| `fnr-grafana` | Визуализация метрик и дашборды | `fnr-grafana:3000` (host: 3001) |
 
-Все сервисы общаются через Docker-сеть `fnr-net` по именам контейнеров. Порты на хост не пробрасываются — для доступа извне нужен reverse proxy (nginx/Traefik).
+Все сервисы (включая мониторинг) общаются через Docker-сеть `fnr-net` по именам контейнеров. Порты на хост не пробрасываются (кроме Grafana: 3001) — для доступа извне нужен reverse proxy (nginx/Traefik).
 
 ---
 
@@ -80,6 +82,19 @@ docker compose down
 docker compose down -v
 ```
 
+### 6. Запуск мониторинга (Grafana + Prometheus)
+
+```bash
+docker compose -f docker-compose.monitoring.yml up -d
+```
+
+### Доступ к интерфейсам
+
+| Сервис | URL (внутренний) | Данные для входа |
+|---|---|---|
+| **FNR Analytics** (Дашборд) | http://fnr-analytics:80 | Логин: `admin` или `analyst`<br>Пароль: `admin123` или `analyst123`<br>2FA Код: `123456` |
+| **Grafana** (Метрики сервисов) | http://localhost:3001 | *См. переменные `GRAFANA_ADMIN_USER` и `GRAFANA_ADMIN_PASSWORD` в `.env`* |
+
 ---
 
 ## Настройка .env
@@ -88,7 +103,7 @@ docker compose down -v
 
 ### Обязательные переменные
 
-#### Bitrix24
+#### Bitrix24 — Входящий вебхук (для commanalysis, marking, fnr-status-bot)
 
 Создать **входящий вебхук** в Bitrix24:  
 `Настройки → Интеграции → Вебхуки → Входящий вебхук`  
@@ -99,10 +114,26 @@ BITRIX_WEBHOOK_URL=https://your-portal.bitrix24.ru/rest/1/your-token/
 BITRIX_PORTAL_DOMAIN=your-portal.bitrix24.ru
 ```
 
-Создать **исходящий вебхук** для получения событий:  
-`Настройки → Интеграции → Вебхуки → Исходящий вебхук`  
-- URL обработчика: `http://your-server:3000/webhook`  
-- События: `OnCrmLeadAdd`, `OnImConnectorMessageAdd`
+#### Bitrix24 — OAuth-приложение (webhook-сервис, получение событий)
+
+Webhook-сервис использует OAuth для получения событий от Bitrix24 через ngrok-туннель.
+
+**Шаг 1**: Создать **локальное приложение** в Bitrix24:  
+`Разработчикам → Другое → Локальное приложение`
+
+```env
+BITRIX_CLIENT_ID=local.xxxxxxxx.xxxxxxxx
+BITRIX_CLIENT_SECRET=xxxxxxxxxxxxxxxx
+BITRIX_APP_TOKEN=xxxxxxxxxxxxxxxx
+```
+
+**Шаг 2**: Зарегистрироваться на [ngrok.com](https://ngrok.com) и получить authtoken:
+
+```env
+NGROK_AUTHTOKEN=xxxxxxxxxxxxxxxx
+```
+
+**Шаг 3**: Запустить и установить: `http://localhost:3000/install`
 
 #### Telegram Bot
 
@@ -113,8 +144,6 @@ MANAGER_PHONE=+375XXXXXXXXX
 ```
 
 #### LM Studio (классификация обращений)
-
-LM Studio должен быть запущен на хост-машине. В Docker используется `host.docker.internal`:
 
 ```env
 OPENAI_API_KEY=lm-studio
@@ -131,8 +160,6 @@ WHISPER_MODEL=whisper-1
 ```
 
 #### Менеджеры Bitrix24
-
-ID пользователей из CRM. Используются для round-robin роутинга:
 
 ```env
 MANAGER_IDS_SALES=1,2,3
@@ -152,8 +179,6 @@ MDLP_DEFAULT_GTIN=your_gtin
 
 #### Стадии воронки CRM
 
-Узнать ID стадий: `CRM → Настройки → Воронки и туннели продаж`
-
 ```env
 BITRIX_STAGE_PRODUCTION=C3:NEW
 BITRIX_STAGE_SHIPMENT=C3:WON
@@ -164,27 +189,21 @@ BITRIX_OPERATOR_USER_ID=1
 #### Отчёты commanalysis
 
 ```env
-REPORT_MANAGER_USER_ID=1        # ID руководителя в Bitrix24
+REPORT_MANAGER_USER_ID=1
 REPORT_EMAIL=director@example.by
 ```
 
 ### Необязательные переменные
 
 ```env
-# SLA дедлайны (часы, по умолчанию: 1/4/8/24/48)
 SLA_P1_HOURS=1
 SLA_P2_HOURS=4
 SLA_P3_HOURS=8
 SLA_P4_HOURS=24
 SLA_P5_HOURS=48
-
-# Rate limiting webhook (запросов в минуту)
 RATE_LIMIT_MAX=60
-
-# Секрет для верификации вебхуков marking (если нужна доп. защита)
 WEBHOOK_SECRET=
-
-# Только для локальной разработки — отключает верификацию домена Bitrix24
+# NGROK_DOMAIN=your-domain.ngrok-free.app
 # SKIP_VERIFY=true
 ```
 
@@ -192,7 +211,7 @@ WEBHOOK_SECRET=
 
 ## Настройка Bitrix24
 
-### Входящий вебхук (наш сервер → Bitrix24)
+### Входящий вебхук (сервисы → Bitrix24 API)
 
 | Поле | Значение |
 |---|---|
@@ -200,17 +219,23 @@ WEBHOOK_SECRET=
 | Права | CRM, Задачи, IM, Телефония |
 | Переменная | `BITRIX_WEBHOOK_URL` |
 
-Один URL используется всеми сервисами (webhook, calculator, commanalysis, fnr-status-bot, marking).
+Используется сервисами commanalysis, marking, fnr-status-bot для вызова Bitrix24 API.
 
-### Исходящий вебхук (Bitrix24 → наш сервер)
+### OAuth-приложение (Bitrix24 → webhook-сервис)
 
 | Поле | Значение |
 |---|---|
-| Расположение | Настройки → Интеграции → Вебхуки → Исходящий вебхук |
-| URL обработчика | `https://your-server/webhook` |
-| События | `OnCrmLeadAdd`, `OnImConnectorMessageAdd` |
+| Расположение | Разработчикам → Другое → Локальное приложение |
+| Права | CRM, Задачи, IM, Телефония |
+| Переменные | `BITRIX_CLIENT_ID`, `BITRIX_CLIENT_SECRET`, `BITRIX_APP_TOKEN` |
 
-Верификация: сервис проверяет `auth.domain` в теле запроса против `BITRIX_PORTAL_DOMAIN`.
+Webhook-сервис автоматически подписывается на события (`event.bind`):
+- `ONCRMLEADADD` → AI-классификация → роутинг
+- `ONIMCONNECTORMESSAGEADD` → IM-сообщения
+- `ONCRMDEALUPDATE` → forward на fnr-marking
+- `ONVOXIMPLANTCALLEND` → forward на fnr-commanalysis
+
+Исходящий вебхук больше не нужен.
 
 ---
 

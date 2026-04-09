@@ -24,28 +24,50 @@ const logger = require('../utils/logger');
 // ---------------------------------------------------------------------------
 
 /**
- * Выполняет вызов метода Битрикс24 REST API.
+ * Выполняет вызов метода Битрикс24 REST API с retry.
  * @param {string} method  — название метода, например 'crm.deal.get'
  * @param {object} params  — параметры вызова
  * @returns {Promise<any>} — содержимое поля result
  */
 async function callBitrix(method, params = {}) {
   const url = `${config.bitrix.webhookUrl.replace(/\/+$/, '/')}${method}`;
+  const maxAttempts = 3;
+  const baseDelay = 500;
+  let lastError;
 
-  try {
-    const resp = await axios.post(url, params, { timeout: 15000 });
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const resp = await axios.post(url, params, { timeout: 15000 });
 
-    if (resp.data?.error) {
-      throw new Error(`Битрикс24 ошибка [${resp.data.error}]: ${resp.data.error_description}`);
+      if (resp.data?.error) {
+        throw new Error(`Битрикс24 ошибка [${resp.data.error}]: ${resp.data.error_description}`);
+      }
+
+      return resp.data?.result;
+    } catch (err) {
+      lastError = err;
+      const msg = err.response?.data?.error_description || err.message;
+
+      // Don't retry on client errors (4xx) except 429 (rate limit)
+      const status = err.response?.status;
+      if (status && status >= 400 && status < 500 && status !== 429) {
+        logger.error(`[bitrix] Ошибка метода ${method}: ${msg}`);
+        throw err;
+      }
+
+      if (attempt < maxAttempts) {
+        const delay = Math.min(baseDelay * Math.pow(2, attempt - 1), 8000);
+        const jitter = Math.floor(Math.random() * delay);
+        logger.warn(`[bitrix] ${method} attempt ${attempt}/${maxAttempts} failed, retrying in ${jitter}ms: ${msg}`);
+        await new Promise(r => setTimeout(r, jitter));
+      } else {
+        logger.error(`[bitrix] Ошибка метода ${method} после ${maxAttempts} попыток: ${msg}`);
+        throw err;
+      }
     }
-
-    return resp.data?.result;
-  } catch (err) {
-    // Прикидываем дополнительный контекст
-    const msg = err.response?.data?.error_description || err.message;
-    logger.error(`[bitrix] Ошибка метода ${method}: ${msg}`);
-    throw err;
   }
+
+  throw lastError;
 }
 
 // ---------------------------------------------------------------------------
