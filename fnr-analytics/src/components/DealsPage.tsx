@@ -1,24 +1,21 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { Filter, Search, Loader2 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { useBitrixDeals } from "../hooks/useBitrix";
 import ExportButton from "./ExportButton";
 import { getStageInfo } from "../utils/constants";
-import { ColumnDefinition } from "../utils/exportExcel";
+import type { SheetDefinition } from "../utils/exportExcel";
 
 export default function DealsPage() {
   const [searchTerm, setSearchTerm] = useState("");
-  const { deals, loading, error, refetch } = useBitrixDeals({
-    // Optional default filters
-    // ">=DATE_CREATE": new Date(new Date().setMonth(new Date().getMonth() - 1)).toISOString()
-  });
+  const { deals, loading, error, refetch } = useBitrixDeals({});
 
   const filteredDeals = deals.filter(d => 
     (d.TITLE && d.TITLE.toLowerCase().includes(searchTerm.toLowerCase())) ||
     (d.ID && d.ID.toString().includes(searchTerm))
   );
 
-  // Prepare data for funnel/pipeline chart
+  // Stage distribution for chart
   const stageDataMap: Record<string, { name: string, count: number, originalId: string }> = {};
   filteredDeals.forEach(d => {
     if (!stageDataMap[d.STAGE_ID]) {
@@ -30,18 +27,113 @@ export default function DealsPage() {
     }
     stageDataMap[d.STAGE_ID].count += 1;
   });
-
   const chartData = Object.values(stageDataMap).sort((a,b) => b.count - a.count);
 
-  const exportColumns: ColumnDefinition[] = [
-    { header: "ID", key: "ID" },
-    { header: "Название сделки", key: "TITLE", width: 40 },
-    { header: "Стадия", key: "STAGE_ID", formatter: (val) => getStageInfo(val).label },
-    { header: "Сумма", key: "OPPORTUNITY", formatter: (val, row) => `${val || 0} ${row.CURRENCY_ID || 'RUB'}` },
-    { header: "Дата создания", key: "DATE_CREATE", formatter: (val) => new Date(val).toLocaleDateString() },
-    { header: "Ответственный (ID)", key: "ASSIGNED_BY_ID" },
-    { header: "Компания (ID)", key: "COMPANY_ID" }
-  ];
+  // ── Rich Excel export (3 sheets) ──
+  const exportSheets: SheetDefinition[] = useMemo(() => {
+    const totalAmount = filteredDeals.reduce((s, d) => s + parseFloat(d.OPPORTUNITY || 0), 0);
+    const wonDeals = filteredDeals.filter(d => getStageInfo(d.STAGE_ID).color === 'green');
+    const wonAmount = wonDeals.reduce((s, d) => s + parseFloat(d.OPPORTUNITY || 0), 0);
+    const activeDeals = filteredDeals.filter(d => d.CLOSED === 'N');
+    const activeAmount = activeDeals.reduce((s, d) => s + parseFloat(d.OPPORTUNITY || 0), 0);
+
+    return [
+      // Sheet 1: All deals
+      {
+        name: "Все сделки",
+        columns: [
+          { header: "ID", key: "ID", width: 8 },
+          { header: "Название сделки", key: "TITLE", width: 40 },
+          { header: "Стадия (код)", key: "STAGE_ID", width: 20 },
+          { header: "Стадия", key: "STAGE_LABEL", width: 22, formatter: (_: any, row: any) => getStageInfo(row.STAGE_ID).label },
+          { header: "Статус", key: "STATUS", formatter: (_: any, row: any) => {
+            const c = getStageInfo(row.STAGE_ID).color;
+            return c === 'green' ? 'Успех' : c === 'red' ? 'Провал' : 'В работе';
+          }},
+          { header: "Сумма", key: "OPPORTUNITY", width: 15, formatter: (v: any) => parseFloat(v || 0) },
+          { header: "Валюта", key: "CURRENCY_ID", width: 8 },
+          { header: "Дата создания", key: "DATE_CREATE", width: 18, formatter: (v: any) => v ? new Date(v).toLocaleDateString('ru-RU') + ' ' + new Date(v).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '' },
+          { header: "Дата изменения", key: "DATE_MODIFY", width: 18, formatter: (v: any) => v ? new Date(v).toLocaleDateString('ru-RU') : '' },
+          { header: "Закрыта", key: "CLOSED", width: 8, formatter: (v: any) => v === 'Y' ? 'Да' : 'Нет' },
+          { header: "Ответственный (ID)", key: "ASSIGNED_BY_ID", width: 15 },
+          { header: "Контакт (ID)", key: "CONTACT_ID", width: 12 },
+          { header: "Компания (ID)", key: "COMPANY_ID", width: 13 },
+        ],
+        data: filteredDeals,
+        summaryRows: [
+          {
+            ID: "ИТОГО:",
+            TITLE: `${filteredDeals.length} сделок`,
+            STAGE_LABEL: `Успешных: ${wonDeals.length}`,
+            STATUS: `В работе: ${activeDeals.length}`,
+            OPPORTUNITY: totalAmount,
+            CURRENCY_ID: "",
+            DATE_CREATE: `Экспорт: ${new Date().toLocaleDateString('ru-RU')}`,
+          }
+        ]
+      },
+      // Sheet 2: Stage summary
+      {
+        name: "По стадиям",
+        columns: [
+          { header: "Стадия", key: "name", width: 25 },
+          { header: "Количество сделок", key: "count", width: 18 },
+          { header: "Доля (%)", key: "share", width: 12, formatter: (v: any) => `${v}%` },
+          { header: "Общая сумма", key: "amount", width: 18, formatter: (v: any) => parseFloat(v || 0) },
+          { header: "Средний чек", key: "avg", width: 15, formatter: (v: any) => Math.round(parseFloat(v || 0)) },
+        ],
+        data: Object.entries(
+          filteredDeals.reduce<Record<string, { count: number; total: number }>>((acc, d) => {
+            const stage = getStageInfo(d.STAGE_ID).label;
+            if (!acc[stage]) acc[stage] = { count: 0, total: 0 };
+            acc[stage].count++;
+            acc[stage].total += parseFloat(d.OPPORTUNITY || 0);
+            return acc;
+          }, {})
+        ).map(([name, v]) => ({
+          name,
+          count: v.count,
+          share: filteredDeals.length ? Math.round((v.count / filteredDeals.length) * 100) : 0,
+          amount: v.total,
+          avg: v.count ? v.total / v.count : 0,
+        })).sort((a, b) => b.count - a.count),
+        summaryRows: [
+          { name: "ИТОГО:", count: filteredDeals.length, share: "100%", amount: totalAmount, avg: filteredDeals.length ? totalAmount / filteredDeals.length : 0 }
+        ],
+      },
+      // Sheet 3: Monthly dynamics
+      {
+        name: "Динамика по месяцам",
+        columns: [
+          { header: "Месяц", key: "month", width: 12 },
+          { header: "Создано сделок", key: "created", width: 15 },
+          { header: "Сумма созданных", key: "createdAmount", width: 18 },
+          { header: "Закрыто успешно", key: "won", width: 15 },
+          { header: "Сумма выигранных", key: "wonAmount", width: 18 },
+          { header: "Проиграно", key: "lost", width: 12 },
+          { header: "Конверсия (%)", key: "conversion", width: 14 },
+        ],
+        data: (() => {
+          const months: Record<string, { created: number; createdAmount: number; won: number; wonAmount: number; lost: number }> = {};
+          filteredDeals.forEach(d => {
+            const date = new Date(d.DATE_CREATE);
+            const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+            if (!months[key]) months[key] = { created: 0, createdAmount: 0, won: 0, wonAmount: 0, lost: 0 };
+            months[key].created++;
+            months[key].createdAmount += parseFloat(d.OPPORTUNITY || 0);
+            const stage = getStageInfo(d.STAGE_ID);
+            if (stage.color === 'green') { months[key].won++; months[key].wonAmount += parseFloat(d.OPPORTUNITY || 0); }
+            if (stage.color === 'red') months[key].lost++;
+          });
+          return Object.keys(months).sort().map(month => ({
+            month,
+            ...months[month],
+            conversion: months[month].created ? Math.round((months[month].won / months[month].created) * 100) : 0,
+          }));
+        })(),
+      }
+    ];
+  }, [filteredDeals]);
 
   return (
     <div className="p-6 space-y-6 max-w-[1400px] mx-auto">
@@ -54,9 +146,11 @@ export default function DealsPage() {
         <div className="flex items-center gap-2">
            <ExportButton 
             data={filteredDeals} 
-            columns={exportColumns} 
-            filename="deals_export" 
+            columns={[]} 
+            filename="deals_report" 
             disabled={loading || !!error}
+            sheets={exportSheets}
+            label="Excel отчёт (3 листа)"
           />
         </div>
       </div>

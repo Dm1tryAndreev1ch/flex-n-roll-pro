@@ -265,6 +265,123 @@ async function sendEmailReply({ entityType, entityId, toEmail, toName, subject, 
   });
 }
 
+// ─── Automation API methods ───────────────────────────────────────────────────
+
+/**
+ * Convert a lead to a deal + contact.
+ * Bitrix24 handles the conversion natively via STATUS_ID change.
+ * @param {number|string} leadId
+ * @returns {Promise<*>}
+ */
+async function convertLeadToDeal(leadId) {
+  logger.info('[bitrix] Converting lead to deal', { leadId });
+  return callBitrix('crm.lead.update', {
+    id: leadId,
+    fields: { STATUS_ID: 'CONVERTED' },
+  });
+}
+
+/**
+ * Search for duplicate contacts/leads by phone or email.
+ * @param {object} params
+ * @param {string[]} [params.phones] - Phone numbers to search
+ * @param {string[]} [params.emails] - Email addresses to search
+ * @returns {Promise<object>} Duplicate matches { LEAD, CONTACT, COMPANY }
+ */
+async function findDuplicates({ phones = [], emails = [] }) {
+  const results = { LEAD: [], CONTACT: [], COMPANY: [] };
+
+  if (phones.length > 0) {
+    try {
+      const phoneResult = await callBitrix('crm.duplicate.findbycomm', {
+        type: 'PHONE',
+        values: phones,
+        entity_type: 'ALL',
+      });
+      if (phoneResult) Object.assign(results, phoneResult);
+    } catch (err) {
+      logger.warn('[bitrix] Duplicate phone search failed', { error: err.message });
+    }
+  }
+
+  if (emails.length > 0) {
+    try {
+      const emailResult = await callBitrix('crm.duplicate.findbycomm', {
+        type: 'EMAIL',
+        values: emails,
+        entity_type: 'ALL',
+      });
+      if (emailResult) {
+        // Merge with phone results
+        for (const key of ['LEAD', 'CONTACT', 'COMPANY']) {
+          if (emailResult[key]) {
+            results[key] = [...new Set([...(results[key] || []), ...emailResult[key]])];
+          }
+        }
+      }
+    } catch (err) {
+      logger.warn('[bitrix] Duplicate email search failed', { error: err.message });
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Send an in-app notification to a user.
+ * @param {number|string} userId
+ * @param {string} message - Notification text (BB-code supported)
+ */
+async function sendNotification(userId, message) {
+  logger.info('[bitrix] Sending notification', { userId });
+  return callBitrix('im.notify.system.add', {
+    USER_ID: userId,
+    MESSAGE: message,
+  });
+}
+
+/**
+ * Get open (not completed) tasks with CRM bindings.
+ * Used by SLA monitor to check overdue tasks.
+ * @returns {Promise<Array>}
+ */
+async function getOpenTasks() {
+  const result = await callBitrix('tasks.task.list', {
+    filter: {
+      '!STATUS': 5,          // Not completed
+      '!UF_CRM_TASK': '',    // Has CRM binding
+    },
+    select: ['ID', 'TITLE', 'RESPONSIBLE_ID', 'DEADLINE', 'CREATED_DATE', 'STATUS', 'UF_CRM_TASK'],
+    order: { DEADLINE: 'asc' },
+    start: 0,
+  });
+  // Bitrix returns { tasks: [...] } for tasks.task.list
+  return result?.tasks || result || [];
+}
+
+/**
+ * Get deals associated with a contact.
+ * Used for smart routing (find previous manager).
+ * @param {number|string} contactId
+ * @returns {Promise<Array>}
+ */
+async function getDealsByContact(contactId) {
+  return callBitrix('crm.deal.list', {
+    filter: { CONTACT_ID: contactId },
+    select: ['ID', 'ASSIGNED_BY_ID', 'STAGE_ID', 'CLOSEDATE'],
+    order: { CLOSEDATE: 'desc' },
+  }) || [];
+}
+
+/**
+ * Get a deal's full data including stage.
+ * @param {number|string} dealId
+ * @returns {Promise<object>}
+ */
+async function getDealStage(dealId) {
+  return callBitrix('crm.deal.get', { id: dealId });
+}
+
 module.exports = {
   callBitrix,
   createTask,
@@ -276,6 +393,12 @@ module.exports = {
   updateDeal,
   addTimelineComment,
   sendEmailReply,
+  convertLeadToDeal,
+  findDuplicates,
+  sendNotification,
+  getOpenTasks,
+  getDealsByContact,
+  getDealStage,
   calculateDeadline,
   formatBitrixDate,
 };

@@ -21,6 +21,7 @@ const {
   updateDeal,
   addTimelineComment,
   sendEmailReply,
+  convertLeadToDeal,
 } = require('../services/bitrix');
 const { resolveEnumId } = require('../services/fieldProvisioner');
 const {
@@ -28,7 +29,11 @@ const {
   resolvePool,
   buildTaskTitle,
   buildTaskDescription,
+  getPreferredManager,
 } = require('../services/routing');
+const { checkAndLinkDuplicate } = require('../services/duplicates');
+const { estimatePrice } = require('../services/calculatorClient');
+const { generateAndAttachQuote } = require('../services/quoteGenerator');
 
 // ─── Event dispatcher ─────────────────────────────────────────────────────────
 
@@ -129,6 +134,19 @@ async function handleCrmLeadAdd(body) {
   const contactName  = [leadFields.NAME, leadFields.SECOND_NAME, leadFields.LAST_NAME].filter(Boolean).join(' ') || null;
   const contactPhone = (leadFields.PHONE && leadFields.PHONE[0]?.VALUE) || null;
   const contactEmail = (leadFields.EMAIL && leadFields.EMAIL[0]?.VALUE) || null;
+  const contactId    = leadFields.CONTACT_ID || null;
+
+  // Step 0: Duplicate detection
+  const dupeResult = await safeCall(
+    () => checkAndLinkDuplicate({ leadId, phone: contactPhone, email: contactEmail }),
+    '[webhook:crmLeadAdd] Duplicate check failed'
+  );
+
+  if (dupeResult?.isDuplicate) {
+    logger.info('[webhook:crmLeadAdd] Duplicate detected, continuing with linked contact', {
+      leadId, contactId: dupeResult.contactId,
+    });
+  }
 
   await processLeadClassification({
     leadId,
@@ -136,6 +154,7 @@ async function handleCrmLeadAdd(body) {
     contactName,
     contactPhone,
     contactEmail,
+    contactId:  dupeResult?.contactId || contactId,
     fileNames: [],
     dialogId:  null,
   });
@@ -241,6 +260,7 @@ async function processLeadClassification({
   contactName,
   contactPhone,
   contactEmail,
+  contactId,
   fileNames,
   dialogId,
 }) {
@@ -300,11 +320,56 @@ async function processLeadClassification({
     leadId, intent, product_type, priority, route_to, urgency,
   });
 
-  // Step 2: Resolve pool & select manager (round-robin)
-  const pool      = resolvePool(classification);
-  const managerId = await getNextManager(pool);
+  // Step 2: Resolve pool & select manager (smart routing + round-robin fallback)
+  const pool = resolvePool(classification);
 
-  logger.info('[pipeline] Manager assigned', { leadId, pool, managerId });
+  // Try smart routing first: check if this contact had a previous manager
+  let managerId = await safeCall(
+    () => getPreferredManager(contactId),
+    '[pipeline] Smart routing check failed'
+  );
+
+  if (managerId) {
+    logger.info('[pipeline] Smart routing: using preferred manager', { leadId, managerId, contactId });
+  } else {
+    managerId = await getNextManager(pool);
+    logger.info('[pipeline] Round-robin manager assigned', { leadId, pool, managerId });
+  }
+
+  // Step 2b: Auto-calculate price if we have enough data
+  if (extracted_data.quantity && leadId) {
+    const estimate = await safeCall(
+      () => estimatePrice({
+        quantity:    Number(extracted_data.quantity),
+        material:    extracted_data.material,
+        dimensions:  extracted_data.dimensions,
+        productType: product_type,
+      }),
+      '[pipeline] Price estimation failed'
+    );
+
+    if (estimate?.price) {
+      classification.extracted_data.budget = estimate.price;
+      logger.info('[pipeline] Auto-calculated price', { leadId, price: estimate.price });
+
+      // Generate PDF quote
+      await safeCall(
+        () => generateAndAttachQuote({
+          clientName:   extracted_data.contact_name || contactName,
+          clientCompany: extracted_data.company,
+          clientEmail:  extracted_data.contact_email || contactEmail,
+          productType:  product_type,
+          material:     extracted_data.material,
+          dimensions:   extracted_data.dimensions,
+          quantity:     Number(extracted_data.quantity),
+          price:        estimate.price,
+          pricePerUnit: estimate.pricePerUnit,
+          deadline:     extracted_data.deadline,
+        }, 'lead', leadId),
+        '[pipeline] Quote generation failed'
+      );
+    }
+  }
 
   // Step 3: Update lead fields in Bitrix24
   if (leadId) {
@@ -366,6 +431,22 @@ async function processLeadClassification({
         () => addTimelineComment('lead', leadId,
           `<b>AI auto-reply:</b><br>${auto_reply}`),
         '[pipeline] Failed to add timeline comment'
+      );
+    }
+  }
+
+  // Step 6: Auto-convert hot leads to deals
+  if (leadId && (priority <= 2 || intent === 'order_placement')) {
+    logger.info('[pipeline] Hot lead detected — auto-converting to deal', { leadId, priority, intent });
+    await safeCall(
+      () => convertLeadToDeal(leadId),
+      `[pipeline] Failed to auto-convert lead ${leadId}`
+    );
+    if (leadId) {
+      await safeCall(
+        () => addTimelineComment('lead', leadId,
+          `<b>🔥 Автоконвертация</b><br>Лид автоматически конвертирован в сделку (P${priority}, ${intent}).`),
+        '[pipeline] Failed to add conversion comment'
       );
     }
   }

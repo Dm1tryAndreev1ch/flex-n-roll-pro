@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import { Download, Loader2 } from "lucide-react";
-import { exportToExcel, ColumnDefinition } from "../utils/exportExcel";
+import { Download, Loader2, FileSpreadsheet } from "lucide-react";
+import { exportToExcel, exportMultiSheetExcel, ColumnDefinition, SheetDefinition } from "../utils/exportExcel";
 
 interface ExportButtonProps {
   data: any[];
@@ -8,19 +8,28 @@ interface ExportButtonProps {
   filename: string;
   className?: string;
   disabled?: boolean;
+  /** Full multi-sheet export. When provided, overrides data/columns. */
+  sheets?: SheetDefinition[];
+  label?: string;
 }
 
-export default function ExportButton({ data, columns, filename, className = "", disabled = false }: ExportButtonProps) {
+export default function ExportButton({ 
+  data, columns, filename, className = "", disabled = false,
+  sheets, label 
+}: ExportButtonProps) {
   const [exporting, setExporting] = useState(false);
 
   const handleExport = async () => {
-    if (!data.length || exporting) return;
+    if (exporting) return;
     setExporting(true);
     
-    // Slight timeout to allow UI to update to loading state before blocking main thread
     setTimeout(() => {
       try {
-        exportToExcel(data, columns, filename);
+        if (sheets && sheets.length > 0) {
+          exportMultiSheetExcel(sheets, filename);
+        } else if (data.length) {
+          exportToExcel(data, columns, filename);
+        }
       } catch (err) {
         console.error("Export failed:", err);
       } finally {
@@ -29,16 +38,18 @@ export default function ExportButton({ data, columns, filename, className = "", 
     }, 50);
   };
 
+  const hasData = sheets ? sheets.some(s => s.data.length > 0) : data.length > 0;
+
   return (
     <button
       onClick={handleExport}
-      disabled={disabled || data.length === 0 || exporting}
+      disabled={disabled || !hasData || exporting}
       className={`flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-white/70 transition-all text-sm
-        ${disabled || data.length === 0 || exporting ? 'opacity-50 cursor-not-allowed' : 'hover:text-white hover:bg-white/10'}
+        ${disabled || !hasData || exporting ? 'opacity-50 cursor-not-allowed' : 'hover:text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500/30'}
         ${className}`}
     >
-      {exporting ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
-      <span>{exporting ? 'Экспорт...' : 'Экспорт'}</span>
+      {exporting ? <Loader2 size={15} className="animate-spin" /> : <FileSpreadsheet size={15} />}
+      <span>{exporting ? 'Экспорт...' : label || 'Excel отчёт'}</span>
     </button>
   );
 }

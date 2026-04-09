@@ -294,9 +294,50 @@ function buildTaskDescription(classification, entityId, entityType = 'lead') {
   return lines.join('\n');
 }
 
+/**
+ * Smart routing: find the preferred manager for a contact based on deal history.
+ * If the contact had successful deals before, route to the same manager.
+ *
+ * @param {number|string|null} contactId
+ * @returns {Promise<number|null>} Manager (user) ID or null if no history
+ */
+async function getPreferredManager(contactId) {
+  if (!contactId) return null;
+
+  try {
+    const { getDealsByContact } = require('./bitrix');
+    const deals = await getDealsByContact(contactId);
+
+    if (!Array.isArray(deals) || deals.length === 0) return null;
+
+    // Prefer manager from the most recent won deal
+    const wonDeal = deals.find(d =>
+      d.STAGE_ID === 'WON' || d.STAGE_ID?.startsWith('C')
+    );
+
+    const preferredDeal = wonDeal || deals[0];
+    const managerId = Number(preferredDeal.ASSIGNED_BY_ID);
+
+    if (managerId && managerId > 0) {
+      logger.info('[routing] Found preferred manager from history', {
+        contactId,
+        managerId,
+        dealId: preferredDeal.ID,
+      });
+      return managerId;
+    }
+
+    return null;
+  } catch (err) {
+    logger.warn('[routing] Failed to check deal history', { error: err.message });
+    return null;
+  }
+}
+
 module.exports = {
   getNextManager,
   resolvePool,
   buildTaskTitle,
   buildTaskDescription,
+  getPreferredManager,
 };

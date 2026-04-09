@@ -17,6 +17,7 @@ const eventsRouter            = require('./routes/events');
 const { startTunnel, stopTunnel } = require('./services/ngrok');
 const { bindAllEvents }           = require('./services/eventBinder');
 const { provisionAllFields }      = require('./services/fieldProvisioner');
+const slaMonitor                  = require('./services/slaMonitor');
 
 const app = express();
 
@@ -135,6 +136,9 @@ const server = app.listen(PORT, async () => {
         } catch (err) {
           logger.warn('[server] Field provisioning deferred', { error: err.message });
         }
+
+        // Start SLA monitor
+        slaMonitor.start();
       }
     } catch (err) {
       logger.error('[server] Failed to start ngrok tunnel', { error: err.message });
@@ -148,6 +152,9 @@ const server = app.listen(PORT, async () => {
 // ─── Graceful shutdown ────────────────────────────────────────────────────────
 async function gracefulShutdown(signal) {
   logger.info(`[server] Received ${signal}, shutting down gracefully…`);
+
+  // Stop SLA monitor
+  slaMonitor.stop();
 
   // Stop ngrok tunnel
   await stopTunnel();

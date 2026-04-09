@@ -1,15 +1,16 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { Search, Loader2 } from "lucide-react";
 import { useBitrixContacts, useBitrixCompanies } from "../hooks/useBitrix";
 import ExportButton from "./ExportButton";
-import { ColumnDefinition } from "../utils/exportExcel";
+import type { SheetDefinition } from "../utils/exportExcel";
 
 export default function ContactsPage() {
   const [activeTab, setActiveTab] = useState<"contacts" | "companies">("contacts");
   const [searchTerm, setSearchTerm] = useState("");
   
-  const { contacts, loading: loadingContacts, error: errorContacts } = useBitrixContacts();
-  const { companies, loading: loadingCompanies, error: errorCompanies } = useBitrixCompanies();
+  const { contacts, loading: loadingContacts, error: errorContacts } = useBitrixContacts({});
+  // Add select param to ensure we fetch all relevant fields for export
+  const { companies, loading: loadingCompanies, error: errorCompanies } = useBitrixCompanies({});
 
   const filteredContacts = contacts.filter(c => 
     (c.NAME && c.NAME.toLowerCase().includes(searchTerm.toLowerCase())) ||
@@ -22,22 +23,82 @@ export default function ContactsPage() {
     (c.TITLE && c.TITLE.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  const contactExportCols: ColumnDefinition[] = [
-    { header: "ID", key: "ID" },
-    { header: "Имя", key: "NAME" },
-    { header: "Фамилия", key: "LAST_NAME" },
-    { header: "Телефон", key: "PHONE", formatter: (val) => val && val.length ? val.map((p: any) => p.VALUE).join(', ') : '' },
-    { header: "Email", key: "EMAIL", formatter: (val) => val && val.length ? val.map((e: any) => e.VALUE).join(', ') : '' },
-    { header: "Дата создания", key: "DATE_CREATE", formatter: (val) => new Date(val).toLocaleDateString() }
-  ];
+  // ── Multi-sheet export ──
+  const exportSheetsContacts: SheetDefinition[] = useMemo(() => [
+    {
+      name: "Все Контакты",
+      columns: [
+        { header: "ID", key: "ID", width: 8 },
+        { header: "Имя Фамилия", key: "FULL_NAME", width: 30, formatter: (_: any, row: any) => `${row.NAME || ''} ${row.LAST_NAME || ''}`.trim() },
+        { header: "Имя", key: "NAME", width: 15 },
+        { header: "Фамилия", key: "LAST_NAME", width: 15 },
+        { header: "Отчество", key: "SECOND_NAME", width: 15 },
+        { header: "Должность", key: "POST", width: 20 },
+        { header: "Телефоны", key: "PHONE", width: 25, formatter: (val) => val && val.length ? val.map((p: any) => p.VALUE).join(', ') : '' },
+        { header: "Email", key: "EMAIL", width: 25, formatter: (val) => val && val.length ? val.map((e: any) => e.VALUE).join(', ') : '' },
+        { header: "Компания (ID)", key: "COMPANY_ID", width: 15 },
+        { header: "Дата создания", key: "DATE_CREATE", width: 18, formatter: (val) => val ? new Date(val).toLocaleDateString('ru-RU') : '' },
+      ],
+      data: filteredContacts,
+      summaryRows: [
+        { ID: "ИТОГО:", FULL_NAME: `${filteredContacts.length} контактов` }
+      ]
+    }
+  ], [filteredContacts]);
 
-  const companyExportCols: ColumnDefinition[] = [
-    { header: "ID", key: "ID" },
-    { header: "Название", key: "TITLE", width: 40 },
-    { header: "Тип", key: "COMPANY_TYPE" },
-    { header: "Выручка", key: "REVENUE" },
-    { header: "Дата создания", key: "DATE_CREATE", formatter: (val) => new Date(val).toLocaleDateString() }
-  ];
+  const exportSheetsCompanies: SheetDefinition[] = useMemo(() => {
+    // Generate type breakdown
+    const typeCounts: Record<string, number> = {};
+    const revenueStats: Record<string, { count: number; sum: number }> = {};
+    
+    filteredCompanies.forEach(c => {
+        const type = c.COMPANY_TYPE || "Не указан";
+        typeCounts[type] = (typeCounts[type] || 0) + 1;
+        
+        if (!revenueStats[type]) revenueStats[type] = { count: 0, sum: 0 };
+        revenueStats[type].count++;
+        revenueStats[type].sum += parseFloat(c.REVENUE || 0);
+    });
+
+    return [
+      // Sheet 1: All Companies
+      {
+        name: "Все Компании",
+        columns: [
+          { header: "ID", key: "ID", width: 8 },
+          { header: "Название компании", key: "TITLE", width: 40 },
+          { header: "Тип", key: "COMPANY_TYPE", width: 20 },
+          { header: "Сфера деятельности", key: "INDUSTRY", width: 20 },
+          { header: "Выручка (₽)", key: "REVENUE", width: 18, formatter: (v: any) => parseFloat(v || 0) },
+          { header: "Дата создания", key: "DATE_CREATE", width: 18, formatter: (val) => val ? new Date(val).toLocaleDateString('ru-RU') : '' },
+          { header: "Ответственный (ID)", key: "ASSIGNED_BY_ID", width: 18 },
+        ],
+        data: filteredCompanies,
+        summaryRows: [
+          { 
+              ID: "ИТОГО:", 
+              TITLE: `${filteredCompanies.length} компаний`,
+              REVENUE: filteredCompanies.reduce((sum, c) => sum + parseFloat(c.REVENUE || 0), 0)
+          }
+        ]
+      },
+      // Sheet 2: Stats by Type
+      {
+         name: "Сводка по типам",
+         columns: [
+             { header: "Тип компании", key: "type", width: 25 },
+             { header: "Количество", key: "count", width: 15 },
+             { header: "Общая выручка", key: "revenue", width: 20 },
+             { header: "Средняя выручка", key: "avg", width: 20, formatter: (_:any, row: any) => row.count ? Math.round(row.revenue / row.count) : 0 },
+         ],
+         data: Object.keys(revenueStats).map(type => ({
+             type,
+             count: revenueStats[type].count,
+             revenue: revenueStats[type].sum,
+         })).sort((a, b) => b.count - a.count)
+      }
+    ];
+  }, [filteredCompanies]);
 
   return (
     <div className="p-6 space-y-6 max-w-[1400px] mx-auto">
@@ -49,10 +110,12 @@ export default function ContactsPage() {
         </div>
         <div className="flex items-center gap-2">
            <ExportButton 
-            data={activeTab === 'contacts' ? filteredContacts : filteredCompanies} 
-            columns={activeTab === 'contacts' ? contactExportCols : companyExportCols} 
-            filename={`${activeTab}_export`} 
+            data={[]} 
+            columns={[]} 
+            filename={`${activeTab}_report`} 
             disabled={(activeTab === 'contacts' ? loadingContacts : loadingCompanies)}
+            sheets={activeTab === 'contacts' ? exportSheetsContacts : exportSheetsCompanies}
+            label={activeTab === 'contacts' ? "Export Contacts" : "Export Companies (2 листа)"}
           />
         </div>
       </div>
@@ -95,7 +158,7 @@ export default function ContactsPage() {
         </div>
 
         <div className="overflow-x-auto">
-          {activeTab === 'contacts' && loadingContacts || activeTab === 'companies' && loadingCompanies ? (
+          {(activeTab === 'contacts' && loadingContacts) || (activeTab === 'companies' && loadingCompanies) ? (
              <div className="py-10 flex items-center justify-center">
               <Loader2 className="animate-spin text-white/30" />
             </div>
