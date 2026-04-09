@@ -49,6 +49,22 @@ services:
     networks:
       - fnr-net
 
+  # ---------------------------------------------------------------------------
+  # FNR Analytics — analytics dashboard (React SPA, singlefile build)
+  # Internal: http://fnr-analytics:80
+  # Configure Bitrix24 URL in the Settings page after first launch
+  # ---------------------------------------------------------------------------
+  fnr-analytics:
+    build:
+      context: ./fnr-analytics
+      dockerfile: Dockerfile
+    container_name: fnr-analytics
+    restart: unless-stopped
+    expose:
+      - "80"
+    networks:
+      - fnr-net
+
 networks:
   fnr-net:
     external: true   # подключаемся к сети созданной основным compose

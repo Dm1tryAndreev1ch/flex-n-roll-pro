@@ -1,11 +1,11 @@
 export class BitrixClient {
   private get webhookUrl(): string {
-    const url = import.meta.env.VITE_BITRIX_WEBHOOK_URL;
+    const fromStorage = localStorage.getItem('bitrix_webhook_url');
+    const url = fromStorage || import.meta.env.VITE_BITRIX_WEBHOOK_URL || '';
     if (!url) {
-      console.warn("VITE_BITRIX_WEBHOOK_URL is not set in environment or settings");
-      return "";
+      console.warn('Bitrix24 Webhook URL not configured. Go to Settings to set it.');
+      return '';
     }
-    // Ensure URL ends with a slash
     return url.endsWith('/') ? url : `${url}/`;
   }
 

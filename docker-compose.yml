@@ -182,23 +182,8 @@ services:
     networks:
       - fnr-net
 
-  # ---------------------------------------------------------------------------
-  # FNR Analytics — analytics dashboard (static React SPA)
-  # Built with Vite + vite-plugin-singlefile, served by nginx
-  # Internal port: 80 (reachable as http://fnr-analytics within fnr-net)
-  # ---------------------------------------------------------------------------
-  fnr-analytics:
-    build:
-      context: ./fnr-analytics
-      dockerfile: Dockerfile
-      args:
-        - VITE_BITRIX_WEBHOOK_URL=${VITE_BITRIX_WEBHOOK_URL}
-    container_name: fnr-analytics
-    restart: unless-stopped
-    expose:
-      - "80"
-    networks:
-      - fnr-net
+  # FNR Analytics moved to docker-compose.calculator.yml (frontend services)
+  #   docker compose -f docker-compose.calculator.yml up --build -d
 
 # =============================================================================
 # Volumes — persistent data storage
