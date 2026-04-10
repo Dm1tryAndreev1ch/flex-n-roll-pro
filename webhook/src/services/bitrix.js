@@ -260,16 +260,22 @@ async function sendEmailReply({ entityType, entityId, toEmail, toName, subject, 
 // ─── Automation API methods ───────────────────────────────────────────────────
 
 /**
- * Convert a lead to a deal + contact.
- * Bitrix24 handles the conversion natively via STATUS_ID change.
+ * Convert a lead to a deal + contact using the native Bitrix24 conversion API.
+ *
+ * Uses crm.lead.convert (not crm.lead.update with STATUS_ID=CONVERTED) because:
+ * - crm.lead.update only changes the status field — it does NOT create a deal
+ * - crm.lead.convert triggers the full Bitrix24 conversion pipeline:
+ *   creates a Deal, creates/links a Contact, fires ONCRMDEALADD event
+ *
  * @param {number|string} leadId
  * @returns {Promise<*>}
  */
 async function convertLeadToDeal(leadId) {
-  logger.info('[bitrix] Converting lead to deal', { leadId });
-  return callBitrix('crm.lead.update', {
-    id: leadId,
-    fields: { STATUS_ID: 'CONVERTED' },
+  logger.info('[bitrix] Converting lead to deal via crm.lead.convert', { leadId });
+  return callBitrix('crm.lead.convert', {
+    id:      leadId,
+    DEAL:    { addIn: 'Y' },    // create a new deal
+    CONTACT: { addIn: 'Y' },    // create/link a contact
   });
 }
 
